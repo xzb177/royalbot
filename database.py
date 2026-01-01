@@ -17,6 +17,7 @@ class UserBinding(Base):
     bank_points = Column(Integer, default=0)  # 库藏魔力 (银行)
     weapon = Column(String, default=None)     # 装备武器
     attack = Column(Integer, default=0)       # 战力数值
+    intimacy = Column(Integer, default=0)     # 好感度
     last_checkin = Column(DateTime)      # 上次签到时间
     last_tarot = Column(DateTime)        # 上次塔罗牌抽取时间
 
@@ -40,21 +41,26 @@ Session = sessionmaker(bind=engine)
 
 def create_or_update_user(tg_id, emby_account=None):
     session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=tg_id).first()
-    if not user:
-        user = UserBinding(tg_id=tg_id, emby_account=emby_account)
-        session.add(user)
-    else:
-        # 如果用户更新了 emby_account，清除该用户之前的待审核 VIP 申请
-        if emby_account and user.emby_account != emby_account:
-            user.emby_account = emby_account
-            # 清除该用户之前的待审核申请
-            session.query(VIPApplication).filter_by(
-                tg_id=tg_id,
-                status='pending'
-            ).delete()
-        elif emby_account:
-            user.emby_account = emby_account
-    session.commit()
-    session.close()
-    return user
+    try:
+        user = session.query(UserBinding).filter_by(tg_id=tg_id).first()
+        if not user:
+            user = UserBinding(tg_id=tg_id, emby_account=emby_account)
+            session.add(user)
+        else:
+            # 如果用户更新了 emby_account，清除该用户之前的待审核 VIP 申请
+            if emby_account and user.emby_account != emby_account:
+                user.emby_account = emby_account
+                # 清除该用户之前的待审核申请
+                session.query(VIPApplication).filter_by(
+                    tg_id=tg_id,
+                    status='pending'
+                ).delete()
+            elif emby_account:
+                user.emby_account = emby_account
+        session.commit()
+        return user
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()

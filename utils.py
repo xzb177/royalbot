@@ -5,7 +5,7 @@
 
 import asyncio
 from typing import Optional
-from telegram import Message
+from telegram import Message, CallbackQuery
 from config import Config
 
 
@@ -76,3 +76,35 @@ async def _delete_after(message: Message, delay: int) -> None:
         await message.delete()
     except Exception:
         pass
+
+
+async def edit_with_auto_delete(
+    query: CallbackQuery,
+    text: str,
+    delay: Optional[int] = None,
+    **kwargs
+) -> Optional[Message]:
+    """
+    编辑回调消息并在延迟后自动删除
+
+    Args:
+        query: CallbackQuery 对象
+        text: 新文本
+        delay: 延迟秒数，None 则使用配置默认值
+        **kwargs: 传递给 edit_message_text 的其他参数
+
+    Returns:
+        编辑后的消息对象（如果成功）
+    """
+    if not query:
+        return None
+
+    msg = await query.edit_message_text(text, **kwargs)
+
+    # 只在群组中自毁
+    if msg and msg.chat.type != "private":
+        delay = delay if delay is not None else Config.MESSAGE_DELETE_DELAY
+        if delay > 0:
+            asyncio.create_task(_delete_after(msg, delay))
+
+    return msg

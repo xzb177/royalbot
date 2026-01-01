@@ -2,11 +2,14 @@
 VIP申请审核模块
 用户发送申请材料 -> 转发给管理员审核 -> 管理员批准/拒绝
 """
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from database import Session, UserBinding, VIPApplication
 from config import Config
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 # 存储正在申请的用户（临时状态）
 pending_applications = {}  # {tg_id: {"step": "waiting_material", "application_id": id}}
@@ -81,11 +84,10 @@ async def apply_vip_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理用户发送的证明材料"""
     user = update.effective_user
-    print(f"[DEBUG] handle_material 被调用: user_id={user.id}, chat_id={update.effective_chat.id}, type={update.effective_chat.type}")
+    logger.info(f"handle_material 被调用: user_id={user.id}, chat_id={update.effective_chat.id}, type={update.effective_chat.type}")
 
     # 只处理私聊
     if update.effective_chat.type != 'private':
-        print(f"[DEBUG] 非私聊，跳过")
         return
 
     session = Session()
@@ -118,7 +120,7 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ 申请记录不存在或已失效")
         return
 
-    print(f"[DEBUG] 处理材料: user={user.id}, app_id={app.id}, owner_id={Config.OWNER_ID}")
+    logger.info(f"处理材料: user={user.id}, app_id={app.id}, owner_id={Config.OWNER_ID}")
 
     # 转发给管理员
     forwarded = None

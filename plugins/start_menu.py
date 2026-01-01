@@ -32,14 +32,18 @@ async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>\"虽然现在只是见习，但只要努力收集魔力，总有一天您也能成为传说中的大魔导师！加油哦！(ง •_•)ง\"</i>"
         )
 
+    vip_button = "👑VIP 权益" if is_vip else "💎升级 VIP"
+    first_button_text = "📜 个人档案" if is_vip else "💎 成为 VIP"
+    first_button_data = "me" if is_vip else "upgrade_vip"
+
     buttons = [
-        [InlineKeyboardButton("📜 个人档案", callback_data="me"),
+        [InlineKeyboardButton(first_button_text, callback_data=first_button_data),
          InlineKeyboardButton("🍬 每日签到", callback_data="checkin")],
         [InlineKeyboardButton("🏦 皇家银行", callback_data="bank"),
          InlineKeyboardButton("🎒 次源背包", callback_data="bag")],
         [InlineKeyboardButton("🔮 命运占卜", callback_data="tarot"),
          InlineKeyboardButton("🎰 盲盒抽取", callback_data="poster")],
-        [InlineKeyboardButton("👑 贵族中心", callback_data="vip"),
+        [InlineKeyboardButton(vip_button, callback_data="vip"),
          InlineKeyboardButton("⚔️ 决斗场", callback_data="duel_info")],
         [InlineKeyboardButton("📖 魔法指南", url="https://t.me/YourChannel")]
     ]
@@ -116,6 +120,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'message': query.message,
         })()
         await vip_center(fake_update, context)
+
+    elif data == "upgrade_vip":
+        text = (
+            "🗝️ <b>【 贵 族 · 晋 升 中 心 】</b>\n\n"
+            "升级 VIP 解锁更多特权：\n\n"
+            "💠 <b>VIP 专属权益：</b>\n"
+            "✨ 4K 极速画质\n"
+            "🏦 银行免手续费\n"
+            "🍬 双倍签到奖励\n"
+            "👑 尊贵身份标识\n\n"
+            "<i>\"准备好成为尊贵的VIP了吗？(ง •_•)ง\"</i>"
+        )
+        buttons = [[InlineKeyboardButton("📩 申请 VIP", callback_data="apply_vip")]]
+        await query.message.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
 
     elif data == "request":
         await query.message.reply_html("🎋 <b>【 许 愿 池 】</b>\n\n✨ 功能开发中...敬请期待！")
@@ -203,5 +221,5 @@ def register(app):
     app.add_handler(CommandHandler("start", start_menu))
     app.add_handler(CommandHandler("menu", start_menu))
     app.add_handler(CommandHandler("help", help_manual))
-    # 只处理非其他模块的回调（排除 admin_, vip_, duel_, forge_ 开头的）
-    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_).*$"))
+    # 只处理非其他模块的回调（排除 admin_, vip_, duel_, forge_, me_ 开头的）
+    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_).*$"))
