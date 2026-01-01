@@ -64,10 +64,12 @@ async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 检查今日是否已抽取
     now = datetime.now()
+    has_extra_tarot = user.extra_tarot and user.extra_tarot > 0
+
     if user.last_tarot:
         last_tarot_date = user.last_tarot.date()
         today_date = now.date()
-        if last_tarot_date >= today_date:
+        if last_tarot_date >= today_date and not has_extra_tarot:
             # 计算剩余时间 - 修复：先归零再+1天
             next_available = user.last_tarot.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
             remaining = next_available - now
@@ -87,21 +89,43 @@ async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 抽取塔罗牌
     card = random.choice(TAROT_CARDS)
     user.last_tarot = now
+
+    # 使用额外塔罗券
+    used_extra = False
+    if has_extra_tarot:
+        user.extra_tarot -= 1
+        used_extra = True
+
     # 追踪活动用于悬赏任务
     await track_activity_wrapper(user_id, "tarot")
     session.commit()
     session.close()
 
-    txt = (
-        f"🔮 <b>【 命 运 · 塔 罗 占 卜 】</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>看板娘闭上眼睛，为您从虚空中抽了一张牌...</i>\n\n"
-        f"{card[2]} <b>{card[0]}</b>\n"
-        f"✨ <b>星级：</b> {card[3]}\n"
-        f"📝 <b>启示：</b> {card[1]}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>\"这就是星辰给您的指引哦，Master...(｡•̀ᴗ-)✧\"</i>"
-    )
+    # 构建返回文本
+    if used_extra:
+        txt = (
+            f"🔮 <b>【 命 运 · 塔 罗 占 卜 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🎟️ <b>使用了额外塔罗券！</b>\n\n"
+            f"<i>看板娘闭上眼睛，为您从虚空中抽了一张牌...</i>\n\n"
+            f"{card[2]} <b>{card[0]}</b>\n"
+            f"✨ <b>星级：</b> {card[3]}\n"
+            f"📝 <b>启示：</b> {card[1]}\n"
+            f"💫 <b>剩余券数：</b> {user.extra_tarot} 张\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<i>\"这就是星辰给您的指引哦，Master...(｡•̀ᴗ-)✧\"</i>"
+        )
+    else:
+        txt = (
+            f"🔮 <b>【 命 运 · 塔 罗 占 卜 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<i>看板娘闭上眼睛，为您从虚空中抽了一张牌...</i>\n\n"
+            f"{card[2]} <b>{card[0]}</b>\n"
+            f"✨ <b>星级：</b> {card[3]}\n"
+            f"📝 <b>启示：</b> {card[1]}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<i>\"这就是星辰给您的指引哦，Master...(｡•̀ᴗ-)✧\"</i>"
+        )
     await reply_with_auto_delete(msg, txt)
 
 
@@ -182,10 +206,15 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来抽盲盒~")
             return
 
-        # 设定价格 (VIP 5折优惠)
-        price = 50 if u.is_vip else 100
+        # 检查是否有额外盲盒券
+        has_extra_gacha = u.extra_gacha and u.extra_gacha > 0
+        if has_extra_gacha:
+            price = 0  # 使用券，免费
+        else:
+            # 设定价格 (VIP 5折优惠)
+            price = 50 if u.is_vip else 100
 
-        if u.points < price:
+        if not has_extra_gacha and u.points < price:
             await reply_with_auto_delete(
                 msg,
                 f"💸 <b>魔力不足喵！</b>\n\n"
@@ -196,7 +225,10 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # 扣费
-        u.points -= price
+        if has_extra_gacha:
+            u.extra_gacha -= 1  # 消耗盲盒券
+        else:
+            u.points -= price
 
         # 抽奖逻辑
         roll = random.randint(1, 100)
@@ -228,6 +260,12 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await track_activity_wrapper(user_id, "box")
         session.commit()
 
+        # 构建结果文本
+        if has_extra_gacha:
+            ticket_info = f"🎟️ 使用了盲盒券！剩余券数: {u.extra_gacha}\n"
+        else:
+            ticket_info = ""
+
         if selected_rank == "UR":
             desc = f"天哪！！是传说中的UR！欧皇附体喵！\n(系统自动返利 {bonus} MP)"
         elif selected_rank == "SSR":
@@ -242,7 +280,8 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = (
             f"🎰 <b>【 命 运 · 盲 盒 机 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"💰 消耗: {price} MP\n"
+            f"{ticket_info}"
+            f"💰 消耗: {price if price > 0 else '免费'} MP\n"
             f"💼 剩余: {u.points} MP\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"💫 <i>魔法阵转动中... 砰！</i>\n\n"
@@ -558,7 +597,14 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 资金转移
             winner.points += bet
             winner.win += 1
-            loser.points -= bet
+
+            # 检查防御卷轴效果（失败不掉钱）
+            shield_protected = False
+            if loser.shield_active:
+                shield_protected = True
+                loser.shield_active = False  # 消耗防御卷轴
+            else:
+                loser.points -= bet
             loser.lost += 1
 
             # 胜者可能获得战力提升（小概率）
@@ -574,13 +620,19 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             power_up_text = f"\n⬆️ <b>{win_name}</b> 战力 +{power_up}！战斗经验提升了喵！" if power_up else ""
 
+            # 防御卷轴效果文本
+            if shield_protected:
+                lose_text = f"🛡️ <b>败者：</b> {lose_name} 的防御卷轴生效了！没有损失 MP！"
+            else:
+                lose_text = f"💀 <b>败者：</b> {lose_name} 失去 {bet} MP"
+
             await query.edit_message_html(
                 f"⚔️ <b>【 决 斗 结 束 】</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"{battle_text}\n"
                 f"👑 <b>胜者：</b> {win_name}\n"
                 f"💰 <b>收益：</b> +{bet} MP{power_up_text}\n\n"
-                f"💀 <b>败者：</b> {lose_name} 失去 {bet} MP\n"
+                f"{lose_text}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"<i>\"多么精彩的战斗！看板娘看得热血沸腾喵！\"</i>"
             )

@@ -54,27 +54,68 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     base_points = random.randint(10, 30)
     user.last_checkin = now
 
+    # 幸运草效果：暴击率+50%
+    lucky_crit = False
+    lucky_bonus = 0
+    if user.lucky_boost:
+        if random.random() < 0.5:  # 50% 暴击率
+            lucky_bonus = base_points  # 暴击 = 额外获得基础值
+            lucky_crit = True
+        user.lucky_boost = False  # 消耗幸运草
+
     if user.is_vip:
         base_points *= 2
-        user.points += base_points
+        total_points = base_points + lucky_bonus
+        user.points += total_points
+
+        # VIP 文案
         text = (
             f"🍬 <b>【 皇 家 · 每 日 补 给 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"👑 <b>Welcome back, Master~</b>\n"
-            f"感谢您对星辰的眷顾，这是今日的双倍馈赠喵~\n\n"
-            f"💎 <b>获得魔力：</b> <b>+{base_points}</b> MP\n"
+        )
+        if lucky_crit:
+            text += (
+                f"🍀 <b>幸运草暴击！</b>\n"
+                f"星辰的眷顾降临了喵~\n\n"
+                f"💎 <b>基础奖励：</b> +{base_points} MP\n"
+                f"🍀 <b>暴击加成：</b> +{lucky_bonus} MP\n"
+                f"💰 <b>总计获得：</b> <b>+{total_points}</b> MP\n"
+            )
+        else:
+            text += (
+                f"感谢您对星辰的眷顾，这是今日的双倍馈赠喵~\n\n"
+                f"💎 <b>获得魔力：</b> <b>+{base_points}</b> MP\n"
+            )
+        text += (
             f"💰 <b>当前余额：</b> {user.points} MP\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"<i>\"明天见哦，亲爱的Master...(｡･ω･｡)ﾉ♡\"</i>"
         )
     else:
-        user.points += base_points
+        total_points = base_points + lucky_bonus
+        user.points += total_points
+
+        # 普通用户文案
         text = (
             f"🍬 <b>【 魔 法 学 院 · 每 日 补 给 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"✨ <b>签到成功喵~</b>\n"
-            f"今天也要加油哦，小魔法少女！\n\n"
-            f"💎 <b>获得魔力：</b> +{base_points} MP\n"
+        )
+        if lucky_crit:
+            text += (
+                f"🍀 <b>幸运草暴击！</b>\n"
+                f"四叶草的魔法生效啦~\n\n"
+                f"💎 <b>基础奖励：</b> +{base_points} MP\n"
+                f"🍀 <b>暴击加成：</b> +{lucky_bonus} MP\n"
+                f"💰 <b>总计获得：</b> <b>+{total_points}</b> MP\n"
+            )
+        else:
+            text += (
+                f"今天也要加油哦，小魔法少女！\n\n"
+                f"💎 <b>获得魔力：</b> +{base_points} MP\n"
+            )
+        text += (
             f"💰 <b>当前余额：</b> {user.points} MP\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"<i>💡 VIP 可享 <b>双倍</b> 魔力加成哦！</i>\n"

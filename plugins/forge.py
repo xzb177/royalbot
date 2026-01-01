@@ -28,9 +28,29 @@ ELEMENTS = ["火焰", "冰霜", "雷霆", "暗影", "神圣", "虚空", "可爱"
 TYPES = ["魔法杖", "魔导书", "法杖", "魔剑", "平底锅", "咸鱼", "魔法棒", "加特林", "圣剑"]
 
 
-def _generate_weapon():
-    """生成随机魔法武器名称和战力"""
-    p = random.choice(PREFIXES)
+def _generate_weapon(boost_rarity=False):
+    """生成随机魔法武器名称和战力
+
+    Args:
+        boost_rarity: 是否提升稀有度概率（大锻造锤）
+    """
+    # 高稀有度模式：提升好词缀概率
+    if boost_rarity:
+        # SSR/神器概率提升
+        roll = random.random()
+        if roll < 0.15:  # 15% 神器
+            p = random.choice(["神话的", "终焉之", "创世的", "真·"])
+        elif roll < 0.40:  # 25% 传说
+            p = random.choice(["传说的", "极·"])
+        elif roll < 0.60:  # 20% 史诗
+            p = random.choice(["史诗的", "稀有的"])
+        elif roll < 0.95:  # 35% 普通
+            p = random.choice(["精良的", "普通的", "练习用的"])
+        else:  # 5% 咸鱼
+            p = "普通的"
+    else:
+        p = random.choice(PREFIXES)
+
     e = random.choice(ELEMENTS)
     t = random.choice(TYPES)
     name = f"{p}{e}{t}"
@@ -69,10 +89,25 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
         return
 
-    base_cost = 200
-    cost = int(base_cost * 0.5) if u.is_vip else base_cost
+    # 检查锻造券
+    has_big_ticket = u.free_forges_big and u.free_forges_big > 0
+    has_small_ticket = (not has_big_ticket) and u.free_forges and u.free_forges > 0
 
-    if u.points < cost:
+    base_cost = 200
+    if has_big_ticket:
+        cost = 0  # 大锻造锤免费
+        boost_rarity = True
+        used_ticket = "大锻造锤"
+    elif has_small_ticket:
+        cost = 0  # 小锻造锤免费
+        boost_rarity = False
+        used_ticket = "小锻造锤"
+    else:
+        cost = int(base_cost * 0.5) if u.is_vip else base_cost
+        boost_rarity = False
+        used_ticket = None
+
+    if not used_ticket and u.points < cost:
         if u.is_vip:
             text = (
                 f"⚒️ <b>【 皇 家 · 炼 金 工 坊 】</b>\n"
@@ -97,11 +132,16 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
         return
 
-    # 扣除费用
-    u.points -= cost
+    # 扣除费用或券
+    if used_ticket == "大锻造锤":
+        u.free_forges_big -= 1
+    elif used_ticket == "小锻造锤":
+        u.free_forges -= 1
+    else:
+        u.points -= cost
 
-    # 生成魔法武器
-    new_name, base_atk, rank = _generate_weapon()
+    # 生成魔法武器（如果使用大锻造锤则提升稀有度）
+    new_name, base_atk, rank = _generate_weapon(boost_rarity=boost_rarity)
 
     # 旧装备信息
     old_weapon = u.weapon if u.weapon else "无"
@@ -114,10 +154,24 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.commit()
 
     vip_badge = " 👑" if u.is_vip else ""
+
+    # 构建消耗文本
+    if used_ticket:
+        if used_ticket == "大锻造锤":
+            cost_text = f"🎟️ 消耗：<b>{used_ticket}</b> (稀有度UP!)\n"
+            remaining = u.free_forges_big
+        else:
+            cost_text = f"🎟️ 消耗：<b>{used_ticket}</b>\n"
+            remaining = u.free_forges
+        if remaining > 0:
+            cost_text += f"📋 剩余券数：{remaining} 张\n"
+    else:
+        cost_text = f"🔥 消耗魔力：<b>-{cost} MP</b>\n"
+
     txt = (
         f"⚒️ <b>【 炼 金 成 功 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"🔥 消耗魔力：<b>-{cost} MP</b>\n"
+        f"{cost_text}"
         f"👤 锻造者：{u.emby_account}{vip_badge}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🗑️ <b>替换旧物：</b> {old_weapon} (ATK: {old_atk})\n"
@@ -147,10 +201,25 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
         return
 
-    base_cost = 200
-    cost = int(base_cost * 0.5) if u.is_vip else base_cost
+    # 检查锻造券
+    has_big_ticket = u.free_forges_big and u.free_forges_big > 0
+    has_small_ticket = (not has_big_ticket) and u.free_forges and u.free_forges > 0
 
-    if u.points < cost:
+    base_cost = 200
+    if has_big_ticket:
+        cost = 0  # 大锻造锤免费
+        boost_rarity = True
+        used_ticket = "大锻造锤"
+    elif has_small_ticket:
+        cost = 0  # 小锻造锤免费
+        boost_rarity = False
+        used_ticket = "小锻造锤"
+    else:
+        cost = int(base_cost * 0.5) if u.is_vip else base_cost
+        boost_rarity = False
+        used_ticket = None
+
+    if not used_ticket and u.points < cost:
         await query.edit_message_text(
             f"🔥 <b>魔力不足喵！</b>\n\n"
             f"锻造需要 <b>{cost} MP</b>~\n"
@@ -160,8 +229,15 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
         return
 
-    u.points -= cost
-    new_name, base_atk, rank = _generate_weapon()
+    # 扣除费用或券
+    if used_ticket == "大锻造锤":
+        u.free_forges_big -= 1
+    elif used_ticket == "小锻造锤":
+        u.free_forges -= 1
+    else:
+        u.points -= cost
+
+    new_name, base_atk, rank = _generate_weapon(boost_rarity=boost_rarity)
 
     old_weapon = u.weapon if u.weapon else "无"
     old_atk = u.attack if u.attack else 0
@@ -172,10 +248,24 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.commit()
 
     vip_badge = " 👑" if u.is_vip else ""
+
+    # 构建消耗文本
+    if used_ticket:
+        if used_ticket == "大锻造锤":
+            cost_text = f"🎟️ 消耗：<b>{used_ticket}</b> (稀有度UP!)\n"
+            remaining = u.free_forges_big
+        else:
+            cost_text = f"🎟️ 消耗：<b>{used_ticket}</b>\n"
+            remaining = u.free_forges
+        if remaining > 0:
+            cost_text += f"📋 剩余券数：{remaining} 张\n"
+    else:
+        cost_text = f"🔥 消耗魔力：<b>-{cost} MP</b>\n"
+
     txt = (
         f"⚒️ <b>【 炼 金 成 功 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"🔥 消耗魔力：<b>-{cost} MP</b>\n"
+        f"{cost_text}"
         f"👤 锻造者：{u.emby_account}{vip_badge}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🗑️ <b>替换旧物：</b> {old_weapon} (ATK: {old_atk})\n"

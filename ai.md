@@ -972,3 +972,96 @@ git@github.com:xzb177/royalbot.git
 - 可考虑优化 `fun_games.py` 的塔罗/盲盒/决斗 UI 风格
 
 ---
+
+## 2026-01-01 魔法商店系统
+
+### 1. 搞定了啥
+- **新增 `plugins/shop.py`**：完整的魔法商店系统
+- **数据库字段扩展**：添加 6 个道具效果字段
+- **VIP 折扣系统**：VIP 用户享受所有商品 5 折优惠
+
+### 2. 关键信息
+**新增的文件：**
+- `plugins/shop.py` - 魔法商店
+  - 命令：`/shop`、`/store` 打开商店，`/buy 商品名` 直接购买
+  - 支持按钮购买和命令购买两种方式
+  - 购买后可返回商店继续购物
+
+**数据库字段（已在 database.py 添加）：**
+```python
+lucky_boost = Column(Boolean, default=False)      # 幸运草：下次签到暴击率UP
+shield_active = Column(Boolean, default=False)    # 防御卷轴：下次决斗失败不掉钱
+extra_tarot = Column(Integer, default=0)          # 额外塔罗次数
+extra_gacha = Column(Integer, default=0)          # 额外盲盒次数
+free_forges = Column(Integer, default=0)          # 免费锻造券
+free_forges_big = Column(Integer, default=0)      # 高级锻造券（稀有度UP）
+```
+
+**商店商品列表：**
+| 商品 | 普通价 | VIP价 | 效果 |
+|------|--------|-------|------|
+| 🔮 塔罗占卜券 | 50 | 25 | 额外一次塔罗占卜 |
+| 🎰 盲盒券 | 100 | 50 | 额外一次盲盒抽取 |
+| ⚒️ 锻造锤(小) | 50 | 25 | 免费锻造一次 |
+| ⚒️ 锻造锤(大) | 500 | 250 | 免费锻造+稀有度UP |
+| 🍀 幸运草 | 30 | 15 | 下次签到暴击率+50% |
+| ⚡ 能量药水 | 150 | 75 | 获得200MP |
+| 🛡️ 防御卷轴 | 80 | 40 | 下次决斗失败不掉钱 |
+| 🎁 神秘宝箱 | 100 | 50 | 随机开出50-500MP |
+
+### 3. 接下来该干嘛
+- 商店功能已生效（PID: 1690633）
+- 需要打通商店道具效果到其他系统：
+  - `lucky_boost` → 签到系统
+  - `shield_active` → 决斗系统
+  - `extra_tarot` → 塔罗系统
+  - `extra_gacha` → 盲盒系统
+  - `free_forges` / `free_forges_big` → 锻造系统
+
+---
+
+## 2026-01-01 商店道具效果全打通
+
+### 1. 搞定了啥
+- **修复商店无响应问题**：添加缺失的数据库字段（lucky_boost, shield_active, extra_tarot, extra_gacha, free_forges, free_forges_big）
+- **打通幸运草→签到**：签到时检查 lucky_boost，50%概率暴击获得额外魔力
+- **打通防御卷轴→决斗**：决斗失败时消耗 shield_active，不扣除败者魔力
+- **打通塔罗券→塔罗**：额外塔罗券可绕过每日限制，消费后扣减
+- **打通盲盒券→盲盒**：额外盲盒券可免费抽取，消费后扣减
+- **打通锻造券→锻造**：
+  - 小锻造锤：免费锻造一次
+  - 大锻造锤：免费锻造 + 稀有度UP（15%神器，25%传说，20%史诗）
+- **优化 _generate_weapon 函数**：新增 boost_rarity 参数支持高稀有度模式
+
+### 2. 关键信息
+**修改的文件（5个）：**
+- `plugins/checkin_bind.py` - 签到系统支持幸运草暴击
+- `plugins/fun_games.py` - 塔罗/盲盒支持额外券，决斗支持防御卷轴
+- `plugins/forge.py` - 锻造支持小/大锻造券，高稀有度模式
+- `plugins/shop.py` - 商店系统（无修改）
+
+**数据库迁移：**
+```sql
+ALTER TABLE bindings ADD COLUMN lucky_boost BOOLEAN DEFAULT 0;
+ALTER TABLE bindings ADD COLUMN shield_active BOOLEAN DEFAULT 0;
+ALTER TABLE bindings ADD COLUMN extra_tarot INTEGER DEFAULT 0;
+ALTER TABLE bindings ADD COLUMN extra_gacha INTEGER DEFAULT 0;
+ALTER TABLE bindings ADD COLUMN free_forges INTEGER DEFAULT 0;
+ALTER TABLE bindings ADD COLUMN free_forges_big INTEGER DEFAULT 0;
+```
+
+**道具效果说明：**
+| 道具 | 效果 |
+|------|------|
+| 🍀 幸运草 | 下次签到50%暴击，额外获得基础值MP |
+| 🛡️ 防御卷轴 | 下次决斗失败不损失MP |
+| 🔮 塔罗券 | 可额外抽塔罗一次（无视每日限制） |
+| 🎰 盲盒券 | 免费抽盲盒一次 |
+| ⚒️ 小锻造锤 | 免费锻造一次 |
+| ⚒️ 大锻造锤 | 免费锻造+高稀有度概率 |
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 1703173）
+- 测试 `/shop` 命令和所有道具效果
+
+---
