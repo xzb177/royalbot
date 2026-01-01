@@ -125,72 +125,86 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 转发给管理员
     forwarded = None
     material_info = ""
+    error_occurred = False
 
-    if update.message.photo:
-        # 处理图片
-        photo = update.message.photo[-1]  # 获取最大尺寸的图片
-        caption = update.message.caption or ""
+    try:
+        if update.message.photo:
+            # 处理图片
+            photo = update.message.photo[-1]  # 获取最大尺寸的图片
+            caption = update.message.caption or ""
 
-        forwarded_txt = (
-            f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
-            f"👤 <b>申请人：</b> {app.username}\n"
-            f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
-            f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
-            f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n"
-            f"📝 <b>备注：</b> {caption}\n\n"
-        )
-        forwarded = await context.bot.send_photo(
-            chat_id=Config.OWNER_ID,
-            photo=photo.file_id,
-            caption=forwarded_txt,
-            parse_mode='HTML'
-        )
-        material_info = "图片"
+            forwarded_txt = (
+                f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
+                f"👤 <b>申请人：</b> {app.username}\n"
+                f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
+                f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
+                f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+                f"📝 <b>备注：</b> {caption}\n\n"
+            )
+            forwarded = await context.bot.send_photo(
+                chat_id=Config.OWNER_ID,
+                photo=photo.file_id,
+                caption=forwarded_txt,
+                parse_mode='HTML'
+            )
+            material_info = "图片"
 
-    elif update.message.document:
-        # 处理文档
-        doc = update.message.document
-        caption = update.message.caption or ""
+        elif update.message.document:
+            # 处理文档
+            doc = update.message.document
+            caption = update.message.caption or ""
 
-        forwarded_txt = (
-            f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
-            f"👤 <b>申请人：</b> {app.username}\n"
-            f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
-            f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
-            f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n"
-            f"📎 <b>文件名：</b> {doc.file_name}\n"
-            f"📝 <b>备注：</b> {caption}\n\n"
-        )
-        forwarded = await context.bot.send_document(
-            chat_id=Config.OWNER_ID,
-            document=doc.file_id,
-            caption=forwarded_txt,
-            parse_mode='HTML'
-        )
-        material_info = "文档"
+            forwarded_txt = (
+                f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
+                f"👤 <b>申请人：</b> {app.username}\n"
+                f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
+                f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
+                f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+                f"📎 <b>文件名：</b> {doc.file_name}\n"
+                f"📝 <b>备注：</b> {caption}\n\n"
+            )
+            forwarded = await context.bot.send_document(
+                chat_id=Config.OWNER_ID,
+                document=doc.file_id,
+                caption=forwarded_txt,
+                parse_mode='HTML'
+            )
+            material_info = "文档"
 
-    elif update.message.text:
-        # 处理纯文本说明
-        text = update.message.text
-        if text.startswith('/'):
-            # 是命令，不处理
-            session.close()
-            return
+        elif update.message.text:
+            # 处理纯文本说明
+            text = update.message.text
+            if text.startswith('/'):
+                # 是命令，不处理
+                session.close()
+                return
 
-        forwarded_txt = (
-            f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
-            f"👤 <b>申请人：</b> {app.username}\n"
-            f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
-            f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
-            f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
-            f"💬 <b>说明：</b>\n{text}"
+            forwarded_txt = (
+                f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
+                f"👤 <b>申请人：</b> {app.username}\n"
+                f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
+                f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
+                f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+                f"💬 <b>说明：</b>\n{text}"
+            )
+            forwarded = await context.bot.send_message(
+                chat_id=Config.OWNER_ID,
+                text=forwarded_txt,
+                parse_mode='HTML'
+            )
+            material_info = "文字说明"
+
+    except Exception as e:
+        # 转发失败，记录错误并通知用户
+        logger.error(f"转发材料给管理员失败: {e}", exc_info=True)
+        error_occurred = True
+        session.close()
+        await update.message.reply_html(
+            f"❌ <b>提交失败</b>\n\n"
+            f"材料转发给管理员时出错：{str(e)}\n\n"
+            f"请联系管理员检查配置。"
         )
-        forwarded = await context.bot.send_message(
-            chat_id=Config.OWNER_ID,
-            text=forwarded_txt,
-            parse_mode='HTML'
-        )
-        material_info = "文字说明"
+        return
 
     if forwarded:
         # 保存管理员收到的消息ID
@@ -219,6 +233,14 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 清除临时状态
         pending_applications.pop(user.id, None)
+    else:
+        # 没有可转发的材料（用户发的是不支持的内容）
+        session.close()
+        await update.message.reply_html(
+            "⚠️ <b>未识别到有效的证明材料</b>\n\n"
+            "请发送图片、文档或文字说明作为证明材料。"
+        )
+        return
 
     session.close()
 
@@ -285,6 +307,37 @@ async def admin_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
             f"Emby：{app.emby_account}\n"
             f"已开通VIP权限"
         )
+
+        # ========== 群组通报：尊贵仪式感 ==========
+        if Config.GROUP_ID > 0:
+            try:
+                # 获取用户信息用于显示
+                user_display = app.username
+                # 简化用户名显示
+                if user_display.startswith('@'):
+                    user_display = user_display[1:]
+
+                announcement = (
+                    f"🎺 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👑 <b>【 皇 家 加 冕 · 新 晋 V I P 】</b> 👑\n"
+                    f"🎺 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"✨ <b>恭 喜</b> <a href=\"tg://user?id={app.tg_id}\">{user_display}</a> <b>晋 升 V I P ！</b> ✨\n\n"
+                    f"💠 <b>:: 尊 贵 特 权 已 激 活 ::</b>\n"
+                    f"🚀 4K 极速通道 · 流畅观影\n"
+                    f"🏦 皇家银行 · 零手续费\n"
+                    f"💰 双倍签到 · 魔力加成\n\n"
+                    f"🌟 <b>感 谢 您 的 支 持 ！</b>\n"
+                    f"<i>\"愿您的观影之旅，如星光般璀璨 (｡•̀ᴗ-)✧\"</i>\n"
+                    f"🎺 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                )
+                await context.bot.send_message(
+                    chat_id=Config.GROUP_ID,
+                    text=announcement,
+                    parse_mode='HTML'
+                )
+            except Exception as e:
+                logger.warning(f"群组通报发送失败: {e}")
+        # ========== 群组通报结束 ==========
 
         # 尝试用 caption 编辑图片消息，失败则用 text 编辑
         try:
