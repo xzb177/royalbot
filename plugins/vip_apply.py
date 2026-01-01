@@ -1,0 +1,392 @@
+"""
+VIP申请审核模块
+用户发送申请材料 -> 转发给管理员审核 -> 管理员批准/拒绝
+"""
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from database import Session, UserBinding, VIPApplication
+from config import Config
+from datetime import datetime
+
+# 存储正在申请的用户（临时状态）
+pending_applications = {}  # {tg_id: {"step": "waiting_material", "application_id": id}}
+
+
+async def apply_vip_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """开始VIP申请流程"""
+    user = update.effective_user
+    session = Session()
+    u = session.query(UserBinding).filter_by(tg_id=user.id).first()
+
+    if not u or not u.emby_account:
+        session.close()
+        await update.message.reply_html("💔 <b>请先绑定账号！</b>\n使用 <code>/bind 账号</code> 绑定后再申请VIP。")
+        return
+
+    if u.is_vip:
+        session.close()
+        await update.message.reply_html("👑 <b>您已经是VIP了！</b>\n无需重复申请~")
+        return
+
+    # 检查是否有待审核的申请
+    existing = session.query(VIPApplication).filter_by(
+        tg_id=user.id,
+        status='pending'
+    ).first()
+    if existing:
+        # 恢复到内存中，允许用户继续发送材料
+        pending_applications[user.id] = {
+            "step": "waiting_material",
+            "application_id": existing.id
+        }
+        session.close()
+        await update.message.reply_html(
+            f"⏳ <b>您有待审核的申请！</b>\n\n"
+            f"请直接发送证明材料，或使用 <code>/cancel</code> 取消申请"
+        )
+        return
+
+    # 创建申请记录
+    app = VIPApplication(
+        tg_id=user.id,
+        username=f"@{user.username}" if user.username else user.first_name,
+        emby_account=u.emby_account,
+        status='pending'
+    )
+    session.add(app)
+    session.commit()
+    app_id = app.id
+    session.close()
+
+    # 设置临时状态
+    pending_applications[user.id] = {
+        "step": "waiting_material",
+        "application_id": app_id
+    }
+
+    txt = (
+        f"📜 <b>【 V I P · 申 请 流 程 】</b>\n\n"
+        f"✨ <b>欢迎申请，{user.first_name}！</b>\n"
+        f"请发送您的证明材料（截图、图片等）\n\n"
+        f"💠 <b>:: 申 请 指 南 ::</b>\n"
+        f"1️⃣ 发送支付凭证/会员截图\n"
+        f"2️⃣ 等待管理员审核\n"
+        f"3️⃣ 审核通过后自动开通VIP\n\n"
+        f"<i>\"请直接发送图片，看板娘会帮您转交给管理员！(｡•̀ᴗ-)✧\"</i>\n\n"
+        f"🚫 <b>发送 /cancel 取消申请</b>"
+    )
+    await update.message.reply_html(txt)
+
+
+async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理用户发送的证明材料"""
+    user = update.effective_user
+    print(f"[DEBUG] handle_material 被调用: user_id={user.id}, chat_id={update.effective_chat.id}, type={update.effective_chat.type}")
+
+    # 只处理私聊
+    if update.effective_chat.type != 'private':
+        print(f"[DEBUG] 非私聊，跳过")
+        return
+
+    session = Session()
+
+    # 检查用户是否在申请流程中（内存中）
+    if user.id not in pending_applications:
+        # 如果不在内存中，检查数据库中是否有待审核的申请
+        app = session.query(VIPApplication).filter_by(
+            tg_id=user.id,
+            status='pending'
+        ).first()
+        if app:
+            # 恢复到内存中
+            pending_applications[user.id] = {
+                "step": "waiting_material",
+                "application_id": app.id
+            }
+        else:
+            session.close()
+            # 没有待审核申请，发送提示
+            await update.message.reply_text("⚠️ 未找到待审核的申请，请先使用 /applyvip 申请")
+            return
+    else:
+        app_info = pending_applications[user.id]
+        app = session.query(VIPApplication).filter_by(id=app_info["application_id"]).first()
+
+    if not app or app.status != 'pending':
+        session.close()
+        pending_applications.pop(user.id, None)
+        await update.message.reply_text("⚠️ 申请记录不存在或已失效")
+        return
+
+    print(f"[DEBUG] 处理材料: user={user.id}, app_id={app.id}, owner_id={Config.OWNER_ID}")
+
+    # 转发给管理员
+    forwarded = None
+    material_info = ""
+
+    if update.message.photo:
+        # 处理图片
+        photo = update.message.photo[-1]  # 获取最大尺寸的图片
+        caption = update.message.caption or ""
+
+        forwarded_txt = (
+            f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
+            f"👤 <b>申请人：</b> {app.username}\n"
+            f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
+            f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
+            f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+            f"📝 <b>备注：</b> {caption}\n\n"
+        )
+        forwarded = await context.bot.send_photo(
+            chat_id=Config.OWNER_ID,
+            photo=photo.file_id,
+            caption=forwarded_txt,
+            parse_mode='HTML'
+        )
+        material_info = "图片"
+
+    elif update.message.document:
+        # 处理文档
+        doc = update.message.document
+        caption = update.message.caption or ""
+
+        forwarded_txt = (
+            f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
+            f"👤 <b>申请人：</b> {app.username}\n"
+            f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
+            f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
+            f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+            f"📎 <b>文件名：</b> {doc.file_name}\n"
+            f"📝 <b>备注：</b> {caption}\n\n"
+        )
+        forwarded = await context.bot.send_document(
+            chat_id=Config.OWNER_ID,
+            document=doc.file_id,
+            caption=forwarded_txt,
+            parse_mode='HTML'
+        )
+        material_info = "文档"
+
+    elif update.message.text:
+        # 处理纯文本说明
+        text = update.message.text
+        if text.startswith('/'):
+            # 是命令，不处理
+            session.close()
+            return
+
+        forwarded_txt = (
+            f"📋 <b>【 V I P · 审 核 请 求 】</b>\n\n"
+            f"👤 <b>申请人：</b> {app.username}\n"
+            f"🆔 <b>用户ID：</b> <code>{app.tg_id}</code>\n"
+            f"🔑 <b>Emby账号：</b> <code>{app.emby_account}</code>\n"
+            f"📅 <b>申请时间：</b> {app.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+            f"💬 <b>说明：</b>\n{text}"
+        )
+        forwarded = await context.bot.send_message(
+            chat_id=Config.OWNER_ID,
+            text=forwarded_txt,
+            parse_mode='HTML'
+        )
+        material_info = "文字说明"
+
+    if forwarded:
+        # 保存管理员收到的消息ID
+        app.message_id = forwarded.message_id
+        session.commit()
+
+        # 发送审核按钮给管理员
+        buttons = [
+            [
+                InlineKeyboardButton("✅ 批准", callback_data=f"vip_approve_{app.id}"),
+                InlineKeyboardButton("❌ 拒绝", callback_data=f"vip_reject_{app.id}")
+            ]
+        ]
+        await context.bot.edit_message_reply_markup(
+            chat_id=Config.OWNER_ID,
+            message_id=forwarded.message_id,
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+
+        # 通知用户
+        await update.message.reply_html(
+            f"✅ <b>材料已提交！</b>\n\n"
+            f"您的{material_info}已转交给管理员，请耐心等待审核结果~\n\n"
+            f"<i>\"审核通过后会通知您哦！(ง •_•)ง\"</i>"
+        )
+
+        # 清除临时状态
+        pending_applications.pop(user.id, None)
+
+    session.close()
+
+
+async def cancel_apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """取消申请"""
+    user = update.effective_user
+    session = Session()
+
+    # 清除内存中的状态
+    was_in_flow = user.id in pending_applications
+    pending_applications.pop(user.id, None)
+
+    # 删除数据库中所有待审核的申请记录
+    deleted = session.query(VIPApplication).filter_by(
+        tg_id=user.id,
+        status='pending'
+    ).delete()
+    session.commit()
+    session.close()
+
+    if was_in_flow or deleted > 0:
+        await update.message.reply_html("🚫 <b>申请已取消</b>")
+    else:
+        await update.message.reply_html("⚠️ <b>没有进行中的申请</b>")
+
+
+async def admin_review_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """管理员审核按钮回调"""
+    query = update.callback_query
+    user = query.from_user
+
+    # 验证是否是管理员
+    if user.id != Config.OWNER_ID:
+        await query.answer("❌ 只有管理员可以操作", show_alert=True)
+        return
+
+    await query.answer()
+
+    data = query.data
+    action, app_id = data.split('_')[1], int(data.split('_')[2])
+
+    session = Session()
+    app = session.query(VIPApplication).filter_by(id=app_id).first()
+
+    if not app:
+        await query.edit_message_text("❌ 申请记录不存在")
+        session.close()
+        return
+
+    if action == 'approve':
+        # 批准申请 - 给用户开通VIP
+        user_binding = session.query(UserBinding).filter_by(tg_id=app.tg_id).first()
+        if user_binding:
+            user_binding.is_vip = True
+
+        app.status = 'approved'
+        app.reviewed_at = datetime.now()
+        session.commit()
+
+        result_text = (
+            f"✅ <b>已批准</b>\n\n"
+            f"用户：{app.username}\n"
+            f"Emby：{app.emby_account}\n"
+            f"已开通VIP权限"
+        )
+
+        # 尝试用 caption 编辑图片消息，失败则用 text 编辑
+        try:
+            await query.edit_message_caption(caption=result_text, parse_mode='HTML')
+        except Exception:
+            try:
+                await query.edit_message_text(text=result_text, parse_mode='HTML')
+            except Exception:
+                # 如果都失败，发送新消息
+                await context.bot.send_message(
+                    chat_id=Config.OWNER_ID,
+                    text=result_text,
+                    parse_mode='HTML'
+                )
+
+        # 通知用户
+        try:
+            await context.bot.send_message(
+                chat_id=app.tg_id,
+                text=(
+                    f"🎉 <b>【 V I P · 审 核 通 过 ！】</b>\n\n"
+                    f"🥂 <b>恭喜 {app.username}！</b>\n"
+                    f"您的VIP申请已通过审核！\n\n"
+                    f"💠 <b>:: 激 活 特 权 ::</b>\n"
+                    f"✅ 4K 极速通道\n"
+                    f"✅ 皇家银行（免手续费）\n"
+                    f"✅ 双倍签到魔力\n\n"
+                    f"<i>\"感谢您的支持，尽情享受吧！(｡•̀ᴗ-)✧\"</i>"
+                ),
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            # 通知管理员发送失败，并给出提示
+            error_msg = (
+                f"✅ <b>已批准，但通知用户失败</b>\n\n"
+                f"用户：{app.username} (ID: {app.tg_id})\n"
+                f"Emby：{app.emby_account}\n\n"
+                f"⚠️ <b>错误原因：</b>\n{str(e)}\n\n"
+                f"<i>提示：用户需要先用 /start 启动机器人私聊</i>"
+            )
+            await context.bot.send_message(
+                chat_id=Config.OWNER_ID,
+                text=error_msg,
+                parse_mode='HTML'
+            )
+
+    elif action == 'reject':
+        # 拒绝申请
+        app.status = 'rejected'
+        app.reviewed_at = datetime.now()
+        session.commit()
+
+        result_text = (
+            f"❌ <b>已拒绝</b>\n\n"
+            f"用户：{app.username}\n"
+            f"Emby：{app.emby_account}"
+        )
+
+        # 尝试用 caption 编辑图片消息，失败则用 text 编辑
+        try:
+            await query.edit_message_caption(caption=result_text, parse_mode='HTML')
+        except Exception:
+            try:
+                await query.edit_message_text(text=result_text, parse_mode='HTML')
+            except Exception:
+                # 如果都失败，发送新消息
+                await context.bot.send_message(
+                    chat_id=Config.OWNER_ID,
+                    text=result_text,
+                    parse_mode='HTML'
+                )
+
+        # 通知用户
+        try:
+            await context.bot.send_message(
+                chat_id=app.tg_id,
+                text=(
+                    f"💔 <b>【 V I P · 审 核 未 通 过 】</b>\n\n"
+                    f"很遗憾，您的VIP申请未通过审核。\n"
+                    f"如有疑问请联系管理员。\n\n"
+                    f"<i>\"请检查材料后重新申请吧！加油！(ง •_•)ง\"</i>"
+                ),
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            # 通知管理员发送失败，并给出提示
+            error_msg = (
+                f"❌ <b>已拒绝，但通知用户失败</b>\n\n"
+                f"用户：{app.username} (ID: {app.tg_id})\n"
+                f"Emby：{app.emby_account}\n\n"
+                f"⚠️ <b>错误原因：</b>\n{str(e)}\n\n"
+                f"<i>提示：用户需要先用 /start 启动机器人私聊</i>"
+            )
+            await context.bot.send_message(
+                chat_id=Config.OWNER_ID,
+                text=error_msg,
+                parse_mode='HTML'
+            )
+
+    session.close()
+
+
+def register(app):
+    app.add_handler(CommandHandler("applyvip", apply_vip_start))
+    app.add_handler(CommandHandler("cancel", cancel_apply))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, handle_material))
+    app.add_handler(CallbackQueryHandler(admin_review_callback, pattern=r"^vip_(approve|reject)_\d+$"))
