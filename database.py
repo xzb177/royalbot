@@ -28,6 +28,14 @@ class UserBinding(Base):
     daily_gift_count = Column(Integer, default=0)      # 今日转赠次数
     last_chat_time = Column(DateTime)                  # 上次聊天时间（连击用）
     chat_combo = Column(Integer, default=0)            # 连续聊天连击数
+    items = Column(Text, default="")                  # 道具背包 (逗号分隔存储)
+    # === 商店道具效果字段 ===
+    lucky_boost = Column(Boolean, default=False)      # 幸运草：下次签到暴击率UP
+    shield_active = Column(Boolean, default=False)    # 防御卷轴：下次决斗失败不掉钱
+    extra_tarot = Column(Integer, default=0)          # 额外塔罗次数
+    extra_gacha = Column(Integer, default=0)          # 额外盲盒次数
+    free_forges = Column(Integer, default=0)          # 免费锻造券
+    free_forges_big = Column(Integer, default=0)      # 高级锻造券（稀有度UP）
 
 class VIPApplication(Base):
     __tablename__ = 'vip_applications'

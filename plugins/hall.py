@@ -1,3 +1,9 @@
+"""
+荣耀殿堂排行榜 - 魔法少女版
+- 显示战力 TOP 10
+- VIP/普通双界面风格
+- 动态称号系统
+"""
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes
 from database import Session, UserBinding
@@ -5,6 +11,7 @@ from utils import reply_with_auto_delete
 
 # 排行榜每页显示数量
 PAGE_SIZE = 10
+
 
 # 战力等级称号
 def get_rank_title(attack):
@@ -47,7 +54,7 @@ def format_rank_list(users, current_user_id, start_rank=1):
             rank_icon = f"{rank:2d}"
 
         # VIP 标记
-        vip_mark = "👑 " if user.is_vip else ""
+        vip_mark = "👑" if user.is_vip else ""
 
         # 称号
         title = get_rank_title(user.attack)
@@ -55,27 +62,30 @@ def format_rank_list(users, current_user_id, start_rank=1):
         # 高亮当前用户
         if is_current:
             lines.append(f"━━━━━━━━━━━━━━━━━━")
-            lines.append(f"{rank_icon} │ <b>{vip_mark}{user.emby_account}</b>")
+            lines.append(f"{rank_icon} │ <b>{vip_mark} {user.emby_account}</b>")
             lines.append(f"    │ 战力: <b>{user.attack}</b> │ {title}")
             lines.append(f"━━━━━━━━━━━━━━━━━━")
         else:
-            lines.append(f"{rank_icon} │ {vip_mark}{user.emby_account}")
-            lines.append(f"    │ 战力: <b>{user.attack}</b> │ {title}")
+            lines.append(f"{rank_icon} │ {vip_mark} {user.emby_account}")
+            lines.append(f"    │ 战力: {user.attack} │ {title}")
 
     return "\n".join(lines)
 
 
 async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """荣耀殿堂 - 战力排行榜"""
+    msg = update.effective_message
+    if not msg:
+        return
+
     user_id = update.effective_user.id
     session = Session()
 
-    # 获取当前用户
     current_user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
     if not current_user or not current_user.emby_account:
         session.close()
-        await reply_with_auto_delete(update.message, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
+        await reply_with_auto_delete(msg, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
         return
 
     # 获取所有有战力的用户
@@ -86,7 +96,13 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not all_users:
         session.close()
-        await reply_with_auto_delete(update.message, "🏆 <b>【 荣 耀 殿 堂 】</b>\n\n暂无战力记录喵！快去锻造魔法武器提升战力吧！")
+        await reply_with_auto_delete(
+            msg,
+            f"🏆 <b>【 荣 耀 殿 堂 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"暂无战力记录喵！\n\n"
+            f"<i>\"快去锻造魔法武器提升战力吧！(｡•̀ᴗ-)✧\"</i>"
+        )
         return
 
     # 获取当前用户排名
@@ -102,34 +118,44 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 构建消息
     if current_user.is_vip:
         text = (
-            f"🌌 <b>【 皇 家 · 荣 耀 殿 堂 】</b>\n\n"
+            f"🏆 <b>【 皇 家 · 荣 耀 殿 堂 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
             f"🥂 <b>Welcome, my dear Master~</b>\n"
             f"这是全服魔法少女的实力榜单，您的名字也在其中闪耀喵~\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"🏆 <b>:: TOP {PAGE_SIZE} 魔法少女排行 ::</b>\n"
+            f"🏅 <b>:: TOP {PAGE_SIZE} 星 之 魔导士 ::</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n\n"
             f"{format_rank_list(top_users, user_id)}\n\n"
         )
         if current_rank and current_rank > PAGE_SIZE:
-            text += f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
-            text += f"⚔️ <b>您的战力：</b> <b>{current_user.attack}</b>\n"
-            text += f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n\n"
-            text += f"<i>\"继续努力，看板娘相信您能登顶喵~(*/ω＼*)\"</i>"
+            text += (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
+                f"⚔️ <b>您的战力：</b> <b>{current_user.attack}</b>\n"
+                f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"<i>\"继续努力，看板娘相信您能登顶喵~(*/ω＼*)\"</i>"
+            )
     else:
         text = (
-            f"🏆 <b>【 魔 法 学 院 · 荣 耀 榜 单 】</b>\n\n"
+            f"🏆 <b>【 魔 法 学 院 · 荣 耀 榜 单 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
             f"✨ <b>欢迎来到实力榜单喵！</b>\n"
             f"这里记录了所有魔法少女的荣耀战绩喵~\n\n"
-            f"----------------------------------\n"
-            f"🏅 <b>:: TOP {PAGE_SIZE} 排行榜 ::</b>\n"
-            f"----------------------------------\n\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🏅 <b>:: TOP {PAGE_SIZE} 排 行 榜 ::</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
             f"{format_rank_list(top_users, user_id)}\n\n"
         )
         if current_rank and current_rank > PAGE_SIZE:
-            text += f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
-            text += f"⚔️ <b>您的战力：</b> <b>{current_user.attack}</b>\n"
-            text += f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n\n"
-            text += f"<i>想获得专属称号和双倍奖励吗？觉醒 VIP 解锁更多皇家特权喵！</i>"
+            text += (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
+                f"⚔️ <b>您的战力：</b> {current_user.attack}\n"
+                f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"<i>💡 想获得专属称号和双倍奖励吗？觉醒 VIP 解锁更多皇家特权喵！</i>"
+            )
 
     buttons = []
     if current_user.weapon:
@@ -137,7 +163,7 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons.append([InlineKeyboardButton("⚒️ 去炼金", callback_data="forge")])
 
     await reply_with_auto_delete(
-        update.message,
+        msg,
         text,
         reply_markup=InlineKeyboardMarkup(buttons) if buttons else None
     )

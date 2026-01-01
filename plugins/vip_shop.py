@@ -69,4 +69,4 @@ async def vip_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def register(app):
     app.add_handler(CommandHandler("vip", vip_center))
-    app.add_handler(CommandHandler("shop", vip_center))
+    app.add_handler(CommandHandler("vipcenter", vip_center))

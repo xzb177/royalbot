@@ -217,6 +217,13 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if bonus > 0:
             u.points += bonus
 
+        # === 将物品存入背包 ===
+        current_items = u.items if u.items else ""
+        if current_items:
+            u.items = current_items + "," + item
+        else:
+            u.items = item
+
         # 追踪活动用于悬赏任务
         await track_activity_wrapper(user_id, "box")
         session.commit()
@@ -241,6 +248,7 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💫 <i>魔法阵转动中... 砰！</i>\n\n"
             f"🏆 品级：{rank_data['emoji']} <b>{rank_data['name']}</b>\n"
             f"🎁 获得：<b>{item}</b>\n"
+            f"📦 <i>物品已存入背包！使用 /bag 查看</i>\n"
             f"💬 看板娘：<i>\"{desc}\"</i>"
         )
         await reply_with_auto_delete(msg, txt)
