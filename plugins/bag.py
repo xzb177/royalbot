@@ -10,7 +10,7 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
     points = u.points if u else 0
     session.close()
 
-    txt = f"🎒 <b>【 次 源 背 包 】</b>\n💎 <b>魔力结晶：</b> {points} MP\n📦 <b>道具：</b> 暂无\n\n<i>\"空荡荡的...去商店看看吧？\"</i>"
+    txt = f"🎒 <b>【 魔 法 少 女 的 背 包 】</b>\n💎 <b>魔力结晶：</b> {points} MP\n📦 <b>魔法道具：</b> 暂无喵~\n\n<i>\"包包空空的...去魔法商店看看吧？(｡･ω･｡)\"</i>"
     await reply_with_auto_delete(update.message, txt)
 
 def register(app):

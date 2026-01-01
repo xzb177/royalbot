@@ -20,6 +20,14 @@ class UserBinding(Base):
     intimacy = Column(Integer, default=0)     # 好感度
     last_checkin = Column(DateTime)      # 上次签到时间
     last_tarot = Column(DateTime)        # 上次塔罗牌抽取时间
+    # === 悬赏任务追踪字段 ===
+    daily_chat_count = Column(Integer, default=0)      # 今日聊天条数
+    daily_forge_count = Column(Integer, default=0)     # 今日锻造次数
+    daily_tarot_count = Column(Integer, default=0)     # 今日占卜次数
+    daily_box_count = Column(Integer, default=0)       # 今日盲盒次数
+    daily_gift_count = Column(Integer, default=0)      # 今日转赠次数
+    last_chat_time = Column(DateTime)                  # 上次聊天时间（连击用）
+    chat_combo = Column(Integer, default=0)            # 连续聊天连击数
 
 class VIPApplication(Base):
     __tablename__ = 'vip_applications'

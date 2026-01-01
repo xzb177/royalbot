@@ -1,6 +1,6 @@
 """
-灵装炼金系统 (Forge)
-玩家可以消耗 MP 锻造随机武器，获得战力加成
+魔法少女炼金系统 (Forge)
+玩家可以消耗 MP 锻造魔法武器，获得战力加成
 """
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -9,18 +9,25 @@ from database import Session, UserBinding
 from utils import reply_with_auto_delete
 import random
 
-# 词缀库：决定武器的稀有度和名字
+
+# 导入活动追踪函数
+async def track_activity_wrapper(user_id: int, activity_type: str):
+    """包装函数，延迟导入避免循环依赖"""
+    from mission import track_activity
+    await track_activity(user_id, activity_type)
+
+# 词缀库：决定魔法武器的稀有度和名字
 PREFIXES = [
     "破碎的", "生锈的", "练习用的", "普通的", "精良的",
     "稀有的", "史诗的", "传说的", "神话的", "被诅咒的",
     "真·", "极·", "终焉之", "创世的"
 ]
-ELEMENTS = ["火焰", "冰霜", "雷霆", "暗影", "神圣", "虚空", "也就是个", "用来切菜的"]
-TYPES = ["大剑", "魔杖", "匕首", "战斧", "平底锅", "咸鱼", "魔法书", "加特林", "法杖"]
+ELEMENTS = ["火焰", "冰霜", "雷霆", "暗影", "神圣", "虚空", "可爱", "用来做蛋糕的"]
+TYPES = ["魔法杖", "魔导书", "法杖", "魔剑", "平底锅", "咸鱼", "魔法棒", "加特林", "圣剑"]
 
 
 def _generate_weapon():
-    """生成随机武器名称和战力"""
+    """生成随机魔法武器名称和战力"""
     p = random.choice(PREFIXES)
     e = random.choice(ELEMENTS)
     t = random.choice(TYPES)
@@ -46,14 +53,14 @@ def _generate_weapon():
 
 
 async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """锻造新武器"""
+    """锻造新的魔法武器"""
     user = update.effective_user
     session = Session()
     u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
     # 检查是否绑定
     if not u or not u.emby_account:
-        await reply_with_auto_delete(update.message, "👻 <b>请先 /bind 绑定账号！</b>")
+        await reply_with_auto_delete(update.message, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
         session.close()
         return
 
@@ -64,8 +71,8 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if u.points < cost:
         await reply_with_auto_delete(
             update.message,
-            f"🔥 <b>炉火熄灭了...</b>\n\n"
-            f"您的魔力不足！锻造需要 <b>{cost} MP</b>。\n"
+            f"🔥 <b>魔法炉火熄灭了...</b>\n\n"
+            f"魔力不足喵！锻造需要 <b>{cost} MP</b>~\n"
             f"当前余额：{u.points} MP\n"
             f"<i>(提示：VIP 锻造享受 5 折优惠哦！)</i>"
         )
@@ -75,7 +82,7 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 扣除费用
     u.points -= cost
 
-    # 生成武器
+    # 生成魔法武器
     new_name, base_atk, rank = _generate_weapon()
 
     # 旧装备信息
@@ -85,19 +92,21 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 更新装备
     u.weapon = new_name
     u.attack = base_atk
+    # 追踪活动用于悬赏任务
+    await track_activity_wrapper(user.id, "forge")
     session.commit()
 
     # 结果展示
     txt = (
-        f"⚒️ <b>【 灵 装 · 炼 金 完 成 】</b>\n"
+        f"⚒️ <b>【 魔 法 武 器 · 炼 金 完 成 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🔥 消耗魔力：-{cost} MP\n\n"
-        f"🗑️ <b>销毁旧物：</b> {old_weapon} (ATK: {old_atk})\n"
-        f"✨ <b>获得新装：</b> <b>{new_name}</b>\n"
+        f"🗑️ <b>替换旧物：</b> {old_weapon} (ATK: {old_atk})\n"
+        f"✨ <b>获得新武器：</b> <b>{new_name}</b>\n"
         f"📊 <b>武器评级：</b> {rank}\n"
         f"⚔️ <b>战力评估：</b> <b>{base_atk}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>“感受到了吗？这股涌动的力量... Master 喜欢吗？”</i>"
+        f"<i>“感受到了吗？这股涌动的魔法力量... Master 喜欢吗？(｡•̀ᴗ-)✧”</i>"
     )
 
     buttons = [[InlineKeyboardButton("再来一次 /forge", callback_data="forge_again")]]
@@ -119,7 +128,7 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
     if not u or not u.emby_account:
-        await query.edit_message_text("👻 <b>请先 /bind 绑定账号！</b>", parse_mode='HTML')
+        await query.edit_message_text("👻 <b>请先 /bind 缔结魔法契约喵！</b>", parse_mode='HTML')
         session.close()
         return
 
@@ -128,8 +137,8 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if u.points < cost:
         await query.edit_message_text(
-            f"🔥 <b>炉火熄灭了...</b>\n\n"
-            f"您的魔力不足！锻造需要 <b>{cost} MP</b>。\n"
+            f"🔥 <b>魔法炉火熄灭了...</b>\n\n"
+            f"魔力不足喵！锻造需要 <b>{cost} MP</b>~\n"
             f"当前余额：{u.points} MP",
             parse_mode='HTML'
         )
@@ -144,18 +153,20 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     u.weapon = new_name
     u.attack = base_atk
+    # 追踪活动用于悬赏任务
+    await track_activity_wrapper(user.id, "forge")
     session.commit()
 
     txt = (
-        f"⚒️ <b>【 灵 装 · 炼 金 完 成 】</b>\n"
+        f"⚒️ <b>【 魔 法 武 器 · 炼 金 完 成 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🔥 消耗魔力：-{cost} MP\n\n"
-        f"🗑️ <b>销毁旧物：</b> {old_weapon} (ATK: {old_atk})\n"
-        f"✨ <b>获得新装：</b> <b>{new_name}</b>\n"
+        f"🗑️ <b>替换旧物：</b> {old_weapon} (ATK: {old_atk})\n"
+        f"✨ <b>获得新武器：</b> <b>{new_name}</b>\n"
         f"📊 <b>武器评级：</b> {rank}\n"
         f"⚔️ <b>战力评估：</b> <b>{base_atk}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>“感受到了吗？这股涌动的力量... Master 喜欢吗？”</i>"
+        f"<i>“感受到了吗？这股涌动的魔法力量... Master 喜欢吗？(｡•̀ᴗ-)✧”</i>"
     )
 
     buttons = [[InlineKeyboardButton("再来一次 /forge", callback_data="forge_again")]]
@@ -170,7 +181,7 @@ async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
     if not u or not u.emby_account:
-        await reply_with_auto_delete(update.message, "👻 <b>请先 /bind 绑定账号！</b>")
+        await reply_with_auto_delete(update.message, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
         session.close()
         return
 
@@ -178,9 +189,9 @@ async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     attack = u.attack if u.attack else 0
 
     txt = (
-        f"⚔️ <b>【 装 备 栏 】</b>\n"
+        f"⚔️ <b>【 魔 法 武 器 栏 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"🎯 <b>装备：</b> {weapon}\n"
+        f"🎯 <b>武器：</b> {weapon}\n"
         f"💪 <b>战力：</b> {attack}\n"
         f"━━━━━━━━━━━━━━━━━━"
     )

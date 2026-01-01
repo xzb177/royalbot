@@ -75,7 +75,7 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not current_user or not current_user.emby_account:
         session.close()
-        await reply_with_auto_delete(update.message, "💔 <b>【 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结契约！")
+        await reply_with_auto_delete(update.message, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
         return
 
     # 获取所有有战力的用户
@@ -86,7 +86,7 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not all_users:
         session.close()
-        await reply_with_auto_delete(update.message, "🏆 <b>【 荣 耀 殿 堂 】</b>\n\n暂无战力记录！快去锻造灵装提升战力吧！")
+        await reply_with_auto_delete(update.message, "🏆 <b>【 荣 耀 殿 堂 】</b>\n\n暂无战力记录喵！快去锻造魔法武器提升战力吧！")
         return
 
     # 获取当前用户排名
@@ -103,10 +103,10 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if current_user.is_vip:
         text = (
             f"🌌 <b>【 皇 家 · 荣 耀 殿 堂 】</b>\n\n"
-            f"🥂 <b>Welcome, My Lord.</b>\n"
-            f"这是全服冒险者的实力榜单，您的名字也在其中闪耀！\n\n"
+            f"🥂 <b>Welcome, my dear Master~</b>\n"
+            f"这是全服魔法少女的实力榜单，您的名字也在其中闪耀喵~\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"🏆 <b>:: TOP {PAGE_SIZE} 魔导士排行 ::</b>\n"
+            f"🏆 <b>:: TOP {PAGE_SIZE} 魔法少女排行 ::</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n\n"
             f"{format_rank_list(top_users, user_id)}\n\n"
         )
@@ -114,12 +114,12 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
             text += f"⚔️ <b>您的战力：</b> <b>{current_user.attack}</b>\n"
             text += f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n\n"
-            text += f"<i>\"继续努力，看板娘相信您能登顶！(*/ω＼*)\"</i>"
+            text += f"<i>\"继续努力，看板娘相信您能登顶喵~(*/ω＼*)\"</i>"
     else:
         text = (
-            f"🏆 <b>【 冒 险 者 · 荣 耀 殿 堂 】</b>\n\n"
-            f"✨ <b>欢迎来到实力榜单！</b>\n"
-            f"这里记录了所有魔导士的荣耀战绩！\n\n"
+            f"🏆 <b>【 魔 法 学 院 · 荣 耀 榜 单 】</b>\n\n"
+            f"✨ <b>欢迎来到实力榜单喵！</b>\n"
+            f"这里记录了所有魔法少女的荣耀战绩喵~\n\n"
             f"----------------------------------\n"
             f"🏅 <b>:: TOP {PAGE_SIZE} 排行榜 ::</b>\n"
             f"----------------------------------\n\n"
@@ -129,7 +129,7 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
             text += f"⚔️ <b>您的战力：</b> <b>{current_user.attack}</b>\n"
             text += f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n\n"
-            text += f"<i>想获得专属称号和双倍奖励吗？升级 VIP 解锁更多特权！</i>"
+            text += f"<i>想获得专属称号和双倍奖励吗？觉醒 VIP 解锁更多皇家特权喵！</i>"
 
     buttons = []
     if current_user.weapon:

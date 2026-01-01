@@ -10,7 +10,7 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = Session()
     user = session.query(UserBinding).filter_by(tg_id=user_id).first()
     if not user or not user.emby_account:
-        await reply_with_auto_delete(update.message, "💔 <b>请先绑定账号！</b>\n使用 <code>/bind</code>")
+        await reply_with_auto_delete(update.message, "💔 <b>请先缔结魔法契约喵！</b>\n使用 <code>/bind</code>")
         session.close()
         return
 
@@ -30,10 +30,10 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.close()
             await reply_with_auto_delete(
                 update.message,
-                f"⏰ <b>今日已签到</b>\n\n"
-                f"您今天已经签过到了！\n"
-                f"距离下次签到还有：<b>{hours}小时{minutes}分钟</b>\n\n"
-                f"<i>\"明天再来哦！(｡•̀ᴗ-)✧\"</i>"
+                f"⏰ <b>今日已领取魔力喵~</b>\n\n"
+                f"今天已经领取过魔力了呢！\n"
+                f"距离下次领取还有：<b>{hours}小时{minutes}分钟</b>\n\n"
+                f"<i>\"明天再来哦，看板娘等你喵~(｡•̀ᴗ-)✧\"</i>"
             )
             return
 
@@ -42,10 +42,10 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.is_vip:
         base_points *= 2
         user.points += base_points
-        msg = f"💖 <b>VIP 尊贵暴击！</b>\n您获得了双倍魔力：<b>{base_points} MP</b>！\n当前余额：{user.points}"
+        msg = f"💖 <b>皇家魔法少女暴击！</b>\n您获得了双倍魔力：<b>{base_points} MP</b>喵~\n当前余额：{user.points}"
     else:
         user.points += base_points
-        msg = f"✨ <b>签到成功！</b>\n获得魔力：<b>{base_points} MP</b>\n当前余额：{user.points}\n<i>(升级 VIP 可享双倍哦!)</i>"
+        msg = f"✨ <b>签到成功喵~</b>\n获得魔力：<b>{base_points} MP</b>\n当前余额：{user.points}\n<i>(VIP可享双倍哦!)</i>"
 
     session.commit()
     session.close()
@@ -56,9 +56,9 @@ async def bind(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = context.args[0]
         user = update.effective_user
         create_or_update_user(user.id, name)
-        await reply_with_auto_delete(update.message, f"🌸 <b>契约已缔结！</b>\n\n欢迎加入云海，<b>{name}</b>！\n您现在可以签到领取魔力啦！")
+        await reply_with_auto_delete(update.message, f"🌸 <b>魔法契约已缔结喵！</b>\n\n欢迎来到云海魔法学院，<b>{name}</b>酱！\n现在可以每天签到领取魔力结晶啦~ (｡･ω･｡)ﾉ♡")
     except:
-        await reply_with_auto_delete(update.message, "⚠️ <b>用法错误</b>\n请发送：<code>/bind 您的Emby账号</code>")
+        await reply_with_auto_delete(update.message, "⚠️ <b>咒语念错啦喵！</b>\n请发送：<code>/bind 您的Emby账号</code>")
 
 def register(app):
     app.add_handler(CommandHandler("checkin", checkin))

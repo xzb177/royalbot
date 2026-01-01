@@ -1,8 +1,8 @@
 """
-娱乐功能模块
+娱乐功能模块 - 魔法少女版
 - 命运塔罗牌 (每日运势)
-- 海报盲盒 (魔力回收器)
-- 魔法决斗 (PVP互动)
+- 魔法盲盒 (魔力回收器)
+- 魔法少女决斗 (PVP互动)
 """
 import random
 import uuid
@@ -11,6 +11,19 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
 from database import Session, UserBinding
 from utils import reply_with_auto_delete
+
+
+# 导入活动追踪函数
+async def track_activity_wrapper(user_id: int, activity_type: str):
+    """包装函数，延迟导入避免循环依赖"""
+    from plugins.mission import track_activity
+    await track_activity(user_id, activity_type)
+
+
+async def check_duel_bounty_progress(update: Update, context: ContextTypes.DEFAULT_TYPE, winner_id: int):
+    """检查决斗悬赏任务进度"""
+    from plugins.mission import check_bounty_progress
+    await check_bounty_progress(update, context, "duel")
 
 # ==========================================
 # 🔮 玩法一：命运塔罗牌 (每日运势)
@@ -35,6 +48,10 @@ TAROT_CARDS = [
 
 async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """每日塔罗牌占卜 - 每天限抽一次"""
+    msg = update.effective_message
+    if not msg:
+        return
+
     user_id = update.effective_user.id
     session = Session()
     user = session.query(UserBinding).filter_by(tg_id=user_id).first()
@@ -42,7 +59,7 @@ async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 检查是否已绑定
     if not user or not user.emby_account:
         session.close()
-        await reply_with_auto_delete(update.message, "💔 <b>请先绑定账号！</b>\n使用 <code>/bind 账号</code> 绑定后再来占卜~")
+        await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来占卜~")
         return
 
     # 检查今日是否已抽取
@@ -59,35 +76,37 @@ async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             session.close()
             await reply_with_auto_delete(
-                update.message,
-                f"⏰ <b>今日已占卜</b>\n\n"
-                f"您今天已经抽过塔罗牌了！\n"
+                msg,
+                f"⏰ <b>今日已占卜喵~</b>\n\n"
+                f"今天已经抽过塔罗牌了喵！\n"
                 f"命运之轮需要时间转动... 距离下次占卜还有：<b>{hours}小时{minutes}分钟</b>\n\n"
-                f"<i>\"明天再来吧，命运不会逃走的！(｡•̀ᴗ-)✧\"</i>"
+                f"<i>\"明天再来吧，命运不会逃走的喵~(｡•̀ᴗ-)✧\"</i>"
             )
             return
 
     # 抽取塔罗牌
     card = random.choice(TAROT_CARDS)
     user.last_tarot = now
+    # 追踪活动用于悬赏任务
+    await track_activity_wrapper(user_id, "tarot")
     session.commit()
     session.close()
 
     txt = (
-        f"🔮 <b>【 命 运 · 占 卜 屋 】</b>\n"
+        f"🔮 <b>【 命 运 · 塔 罗 占 卜 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"<i>看板娘闭上眼睛，为您从虚空中抽了一张牌...</i>\n\n"
         f"{card[2]} <b>{card[0]}</b>\n"
         f"✨ <b>星级：</b> {card[3]}\n"
         f"📝 <b>启示：</b> {card[1]}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>\"这就是星辰给您的指引哦，Master... (｡•̀ᴗ-)✧\"</i>"
+        f"<i>\"这就是星辰给您的指引哦，Master...(｡•̀ᴗ-)✧\"</i>"
     )
-    await reply_with_auto_delete(update.message, txt)
+    await reply_with_auto_delete(msg, txt)
 
 
 # ==========================================
-# 🎰 玩法二：海报盲盒 (魔力回收器)
+# 🎰 玩法二：魔法盲盒 (魔力回收器)
 # ==========================================
 GACHA_ITEMS = {
     "UR": {  # Ultra Rare - 5% 概率
@@ -107,7 +126,7 @@ GACHA_ITEMS = {
         "name": "SSR (Super Super Rare)",
         "items": [
             "4K 原盘海报 (典藏版)",
-            "剧场版预告片合集",
+            "魔法少女剧场版合集",
             "声优签名卡"
         ],
         "bonus": 100
@@ -118,7 +137,7 @@ GACHA_ITEMS = {
         "name": "SR (Super Rare)",
         "items": [
             "蓝光 1080P 封面",
-            "OST 原声带选辑",
+            "魔法少女原声带选辑",
             "角色设定集"
         ],
         "bonus": 0
@@ -148,7 +167,11 @@ GACHA_ITEMS = {
 }
 
 async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """海报盲盒 - 花费魔力抽取稀有物品"""
+    """魔法盲盒 - 花费魔力抽取稀有物品"""
+    msg = update.effective_message
+    if not msg:
+        return
+
     user_id = update.effective_user.id
     session = Session()
     try:
@@ -156,7 +179,7 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 检查是否已绑定
         if not u or not u.emby_account:
-            await reply_with_auto_delete(update.message, "💔 <b>请先绑定账号！</b>\n使用 <code>/bind 账号</code> 绑定后再来抽盲盒~")
+            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来抽盲盒~")
             return
 
         # 设定价格 (VIP 5折优惠)
@@ -164,11 +187,11 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if u.points < price:
             await reply_with_auto_delete(
-                update.message,
-                f"💸 <b>魔力不足！</b>\n\n"
+                msg,
+                f"💸 <b>魔力不足喵！</b>\n\n"
                 f"抽取盲盒需要 <b>{price} MP</b>\n"
                 f"您当前余额：<b>{u.points} MP</b>\n\n"
-                f"<i>\"快去签到攒钱吧！(ง •_•)ง\"</i>"
+                f"<i>\"快去签到攒钱吧喵！(ง •_•)ง\"</i>"
             )
             return
 
@@ -194,18 +217,20 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if bonus > 0:
             u.points += bonus
 
+        # 追踪活动用于悬赏任务
+        await track_activity_wrapper(user_id, "box")
         session.commit()
 
         if selected_rank == "UR":
-            desc = f"天哪！！是传说中的UR！欧皇附体！\n(系统自动返利 {bonus} MP)"
+            desc = f"天哪！！是传说中的UR！欧皇附体喵！\n(系统自动返利 {bonus} MP)"
         elif selected_rank == "SSR":
-            desc = "哇！金色的光芒！运气超棒！"
+            desc = "哇！金色的光芒！运气超棒喵~"
         elif selected_rank == "SR":
             desc = "不错的收获哦~"
         elif selected_rank == "R":
             desc = "普普通通...再试一次？"
         else:
-            desc = "emmm...下次会更好的！"
+            desc = "emmm...下次会更好的喵！"
 
         txt = (
             f"🎰 <b>【 命 运 · 盲 盒 机 】</b>\n"
@@ -218,33 +243,37 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎁 获得：<b>{item}</b>\n"
             f"💬 看板娘：<i>\"{desc}\"</i>"
         )
-        await reply_with_auto_delete(update.message, txt)
+        await reply_with_auto_delete(msg, txt)
     except Exception as e:
         session.rollback()
-        await reply_with_auto_delete(update.message, f"⚠️ <b>抽卡失败</b>\n\n<i>\"魔法阵出错了...请稍后再试！\"</i>")
+        await reply_with_auto_delete(msg, f"⚠️ <b>抽卡失败</b>\n\n<i>\"魔法阵出错了...请稍后再试喵！\"</i>")
     finally:
         session.close()
 
 
 # ==========================================
-# ⚔️ 玩法三：魔法决斗 (PVP 互动)
+# ⚔️ 玩法三：魔法少女决斗 (PVP 互动)
 # ==========================================
 # 决斗数据存储结构: context.bot_data["duels"] = { duel_id: { ... } }
 
 async def duel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """发起魔法决斗"""
+    """发起魔法少女决斗"""
+    msg = update.effective_message
+    if not msg:
+        return
+
     challenger = update.effective_user
 
     # 必须回复一条消息才能发起
-    target_msg = update.message.reply_to_message
+    target_msg = msg.reply_to_message
     if not target_msg:
         await reply_with_auto_delete(
-            update.message,
-            "⚔️ <b>发起失败</b>\n\n"
-            f"请回复您要挑战的人的消息，并发送：\n"
+            msg,
+            "⚔️ <b>发起失败喵！</b>\n\n"
+            f"请回复您要挑战的小伙伴消息，并发送：\n"
             f"<code>/duel 赌注金额</code>\n"
             f"例如：<code>/duel 100</code>\n\n"
-            f"<i>\"起步价 10 MP 哦！\"</i>"
+            f"<i>\"起步价 10 MP 喵！\"</i>"
         )
         return
 
@@ -252,26 +281,26 @@ async def duel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 检查是否在挑战自己
     if opponent.id == challenger.id:
-        await reply_with_auto_delete(update.message, "🤔 <b>不能和自己打架哦！</b>\n\n<i>\"再怎么想赢也不能这样啦！\"</i>")
+        await reply_with_auto_delete(msg, "🤔 <b>不能和自己打架哦喵！</b>\n\n<i>\"再怎么想赢也不能这样啦！\"</i>")
         return
 
     # 检查是否在挑战机器人
     if opponent.is_bot:
-        await reply_with_auto_delete(update.message, "🤖 <b>我可是裁判，不能下场比赛的！</b>\n\n<i>\"找真人决斗吧！\"</i>")
+        await reply_with_auto_delete(msg, "🤖 <b>看板娘是裁判，不能下场比赛的喵！</b>\n\n<i>\"找真人决斗吧！\"</i>")
         return
 
     # 解析金额
     try:
         bet = int(context.args[0]) if context.args else 50
         if bet < 10:
-            await reply_with_auto_delete(update.message, "⚠️ <b>赌注太小啦！</b>\n\n起步价 <b>10 MP</b>。")
+            await reply_with_auto_delete(msg, "⚠️ <b>赌注太小啦喵！</b>\n\n起步价 <b>10 MP</b>。")
             return
         if bet > 10000:
-            await reply_with_auto_delete(update.message, "⚠️ <b>赌注太大啦！</b>\n\n单次决斗上限 <b>10000 MP</b>。")
+            await reply_with_auto_delete(msg, "⚠️ <b>赌注太大啦喵！</b>\n\n单次决斗上限 <b>10000 MP</b>。")
             return
     except (IndexError, ValueError):
         await reply_with_auto_delete(
-            update.message,
+            msg,
             "⚠️ <b>格式错误</b>\n\n"
             f"请使用：<code>/duel 金额</code>\n"
             f"例如：<code>/duel 100</code>"
@@ -284,16 +313,16 @@ async def duel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u_challenger = session.query(UserBinding).filter_by(tg_id=challenger.id).first()
     if not u_challenger or not u_challenger.emby_account:
         session.close()
-        await reply_with_auto_delete(update.message, "💔 <b>您还未绑定账号！</b>\n\n使用 <code>/bind 账号</code> 绑定后再来决斗。")
+        await reply_with_auto_delete(msg, "💔 <b>您还未绑定账号喵！</b>\n\n使用 <code>/bind 账号</code> 绑定后再来决斗。")
         return
 
     # 检查发起者余额
     if u_challenger.points < bet:
         session.close()
         await reply_with_auto_delete(
-            update.message,
-            f"💸 <b>余额不足！</b>\n\n"
-            f"您只有 {u_challenger.points} MP，无法发起 {bet} MP 的决斗！"
+            msg,
+            f"💸 <b>魔力不足喵！</b>\n\n"
+            f"只有 {u_challenger.points} MP，无法发起 {bet} MP 的决斗！"
         )
         return
 
@@ -301,8 +330,15 @@ async def duel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u_opponent = session.query(UserBinding).filter_by(tg_id=opponent.id).first()
     if not u_opponent or not u_opponent.emby_account:
         session.close()
-        await reply_with_auto_delete(update.message, "💔 <b>对方还未绑定账号！</b>\n\n<i>\"不能欺负没绑定的路人哦！\"</i>")
+        await reply_with_auto_delete(msg, "💔 <b>对方还未绑定账号喵！</b>\n\n<i>\"不能欺负没绑定的路人哦！\"</i>")
         return
+
+    # 获取双方战力用于显示
+    cha_atk = u_challenger.attack if u_challenger.attack is not None else 10
+    opp_atk = u_opponent.attack if u_opponent.attack is not None else 10
+    cha_wep = u_challenger.weapon or "赤手空拳"
+    opp_wep = u_opponent.weapon or "赤手空拳"
+
     session.close()
 
     # 生成唯一决斗ID
@@ -336,19 +372,41 @@ async def duel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ]
 
-    msg = await update.message.reply_html(
-        f"⚔️ <b>【 魔 法 决 斗 · 展 开 】</b>\n"
+    # 战力对比指示
+    if cha_atk > opp_atk * 1.5:
+        adv_emoji = "🔥"
+        adv_text = "挑战者压倒性优势"
+    elif cha_atk > opp_atk:
+        adv_emoji = "⚔️"
+        adv_text = "挑战者略占上风"
+    elif opp_atk > cha_atk * 1.5:
+        adv_emoji = "🛡️"
+        adv_text = "应战者压倒性优势"
+    elif opp_atk > cha_atk:
+        adv_emoji = "🛡️"
+        adv_text = "应战者略占上风"
+    else:
+        adv_emoji = "⚖️"
+        adv_text = "势均力敌"
+
+    sent_msg = await msg.reply_html(
+        f"⚔️ <b>【 魔 法 少 女 · 决 斗 展 开 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🔴 <b>挑战者：</b> {challenger.first_name or '神秘人'}\n"
+        f"    ⚡ 战力: <code>{cha_atk}</code> | 🗡️ {cha_wep}\n"
+        f"\n"
         f"🔵 <b>应战者：</b> {opponent.first_name or '神秘人'}\n"
+        f"    ⚡ 战力: <code>{opp_atk}</code> | 🗡️ {opp_wep}\n"
+        f"\n"
         f"💰 <b>赌注金额：</b> <code>{bet}</code> MP\n"
+        f"{adv_emoji} <i>{adv_text}</i>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>\"气氛焦灼起来了！应战者请在 30秒 内做出选择！\"</i>",
+        f"<i>\"气氛焦灼起来了！应战者请在 60秒 内做出选择喵！\"</i>",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
     # 保存消息ID用于后续更新
-    context.bot_data["duels"][duel_id]["message_id"] = msg.message_id
+    context.bot_data["duels"][duel_id]["message_id"] = sent_msg.message_id
 
 
 async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -356,41 +414,68 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    data_parts = query.data.split('_')
-    if len(data_parts) < 3:
+    # 解析: duel_accept_xxxxx 或 duel_reject_xxxxx
+    parts = query.data.split('_')
+    # parts[0]="duel", parts[1]="accept/reject", parts[2]=duel_id
+    if len(parts) < 3:
+        await query.edit_message_text("⚠️ <b>决斗数据错误喵！</b>")
         return
 
-    action = f"{data_parts[1]}_{data_parts[2]}"
-    duel_id = data_parts[3] if len(data_parts) > 3 else None
+    action = parts[1]  # "accept" 或 "reject"
+    duel_id = parts[2]  # 决斗ID
 
-    if not duel_id or duel_id not in context.bot_data.get("duels", {}):
-        await query.edit_message_text("⏰ <b>这场决斗已经过期啦！</b>")
+    if not context.bot_data or "duels" not in context.bot_data or duel_id not in context.bot_data["duels"]:
+        await query.edit_message_text("⏰ <b>这场决斗已经过期啦喵！</b>\n\n<i>\"可能被取消了，或者服务器重启了喵~\"</i>")
         return
 
     duel_data = context.bot_data["duels"][duel_id]
     user = query.from_user
 
-    # 检查决斗是否过期 (30秒)
-    if (datetime.now() - duel_data["created_at"]).total_seconds() > 30:
-        await query.edit_message_text("⏰ <b>决斗已超时！</b>\n\n<i>\"犹豫就会败北...\"</i>")
+    # 检查决斗是否过期 (60秒，从30秒延长)
+    if (datetime.now() - duel_data["created_at"]).total_seconds() > 60:
+        await query.edit_message_text("⏰ <b>决斗已超时喵！</b>\n\n<i>\"犹豫就会败北...\"</i>")
         del context.bot_data["duels"][duel_id]
         return
 
     # 只有应战者能操作
     if user.id != duel_data["opponent_id"]:
-        await query.answer("这不是你的决斗！吃瓜群众请后退！", show_alert=True)
+        await query.answer("这不是你的决斗喵！吃瓜群众请后退！", show_alert=True)
         return
 
-    if action == "duel_reject":
-        await query.edit_message_text(
-            f"🏳️ <b>决斗取消</b>\n\n"
-            f"{user.first_name or '应战者'} 选择了认怂...\n"
-            f"<i>\"没有人受伤，就是有点没面子。\"</i>"
-        )
-        del context.bot_data["duels"][duel_id]
+    if action == "reject":
+        # 认怂，挑战者获得少量安慰奖
+        session = Session()
+        try:
+            u_cha = session.query(UserBinding).filter_by(tg_id=duel_data["challenger_id"]).first()
+            if u_cha:
+                consolation = max(5, duel_data["bet"] // 10)  # 10% 安慰奖
+                u_cha.points += consolation
+                session.commit()
+                await query.edit_message_html(
+                    f"🏳️ <b>决斗取消</b>\n\n"
+                    f"{user.first_name or '应战者'} 选择了认怂...\n"
+                    f"💰 <b>{duel_data['challenger_name']}</b> 获得 <code>{consolation}</code> MP 安慰奖\n"
+                    f"<i>\"没有人受伤，就是有点没面子喵...\"</i>"
+                )
+            else:
+                await query.edit_message_html(
+                    f"🏳️ <b>决斗取消</b>\n\n"
+                    f"{user.first_name or '应战者'} 选择了认怂...\n"
+                    f"<i>\"没有人受伤，就是有点没面子喵...\"</i>"
+                )
+        except:
+            await query.edit_message_html(
+                f"🏳️ <b>决斗取消</b>\n\n"
+                f"{user.first_name or '应战者'} 选择了认怂...\n"
+                f"<i>\"没有人受伤，就是有点没面子喵...\"</i>"
+            )
+        finally:
+            session.close()
+            if duel_id in context.bot_data.get("duels", {}):
+                del context.bot_data["duels"][duel_id]
         return
 
-    if action == "duel_accept":
+    if action == "accept":
         session = Session()
         try:
             # 重新查询双方数据
@@ -401,38 +486,66 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # 再次检查余额
             if not u_opp or u_opp.points < bet:
-                await query.edit_message_text(
+                await query.edit_message_html(
                     f"💸 <b>决斗取消</b>\n\n"
-                    f"{user.first_name or '应战者'} 的钱不够付赌注！\n"
+                    f"{user.first_name or '应战者'} 的钱不够付赌注喵！\n"
                     f"<i>\"好尴尬啊...\"</i>"
                 )
                 del context.bot_data["duels"][duel_id]
+                session.close()
                 return
 
             if not u_cha or u_cha.points < bet:
-                await query.edit_message_text(
+                await query.edit_message_html(
                     f"💸 <b>决斗取消</b>\n\n"
-                    f"{duel_data['challenger_name']} 的钱已经花光了！\n"
+                    f"{duel_data['challenger_name']} 的钱已经花光了喵！\n"
                     f"<i>\"发起者破产了，决斗无效！\"</i>"
                 )
                 del context.bot_data["duels"][duel_id]
+                session.close()
                 return
 
-            # VIP 获胜加成 (挑战者+5%，应战者-5%)
-            win_chance = 0.5
+            # ===== 增强决斗系统：基于战力的战斗计算 =====
+            cha_attack = u_cha.attack if u_cha.attack is not None else 10
+            opp_attack = u_opp.attack if u_opp.attack is not None else 10
+
+            # 计算基础胜率（基于战力差距，使用sigmoid函数平滑）
+            attack_diff = cha_attack - opp_attack
+            # 每100点战力差距约影响5%胜率，上限+/-30%
+            attack_bonus = max(-0.3, min(0.3, attack_diff / 2000))
+
+            # VIP 加成
+            vip_bonus = 0.0
             if u_cha.is_vip:
-                win_chance += 0.05
+                vip_bonus += 0.08  # 挑战者VIP +8%
             if u_opp.is_vip:
-                win_chance -= 0.05
+                vip_bonus -= 0.05  # 应战者VIP -5%（防守优势）
+
+            # 武器加成（稀有度额外加成）
+            cha_weapon_bonus = get_weapon_rarity_bonus(u_cha.weapon)
+            opp_weapon_bonus = get_weapon_rarity_bonus(u_opp.weapon)
+
+            # 最终胜率计算
+            win_chance = 0.5 + attack_bonus + vip_bonus + (cha_weapon_bonus - opp_weapon_bonus) / 100
+            win_chance = max(0.15, min(0.85, win_chance))  # 限制在15%-85%之间
 
             winner_is_challenger = random.random() < win_chance
+
+            # 生成战斗过程文本
+            battle_text = generate_battle_text(
+                duel_data["challenger_name"], cha_attack, u_cha.weapon,
+                duel_data["opponent_name"], opp_attack, u_opp.weapon,
+                winner_is_challenger, win_chance
+            )
 
             if winner_is_challenger:
                 winner, loser = u_cha, u_opp
                 win_name = duel_data["challenger_name"]
+                lose_name = duel_data["opponent_name"]
             else:
                 winner, loser = u_opp, u_cha
                 win_name = duel_data["opponent_name"]
+                lose_name = duel_data["challenger_name"]
 
             # 资金转移
             winner.points += bet
@@ -440,37 +553,100 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             loser.points -= bet
             loser.lost += 1
 
+            # 胜者可能获得战力提升（小概率）
+            power_up = 0
+            if random.random() < 0.15:  # 15%概率
+                power_up = random.randint(1, 3)
+                winner.attack = (winner.attack or 0) + power_up
+
             session.commit()
 
-            # 胜负描述
-            descriptions = [
-                "双方魔力激烈碰撞，光芒四射！",
-                "魔法阵轰鸣，能量激荡！",
-                "看板娘都看呆了！",
-                "这是一场势均力敌的较量！"
-            ]
-            desc = random.choice(descriptions)
+            # 检查悬赏任务进度（决斗类型）
+            await check_duel_bounty_progress(update, context, winner.tg_id)
+
+            power_up_text = f"\n⬆️ <b>{win_name}</b> 战力 +{power_up}！战斗经验提升了喵！" if power_up else ""
 
             await query.edit_message_html(
                 f"⚔️ <b>【 决 斗 结 束 】</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"💥 <i>{desc} 最终...</i>\n\n"
+                f"{battle_text}\n"
                 f"👑 <b>胜者：</b> {win_name}\n"
-                f"💰 <b>收益：</b> +{bet} MP\n\n"
-                f"💀 <b>败者：</b> 失去 {bet} MP\n"
+                f"💰 <b>收益：</b> +{bet} MP{power_up_text}\n\n"
+                f"💀 <b>败者：</b> {lose_name} 失去 {bet} MP\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>\"多么精彩的战斗！看板娘看得热血沸腾！\"</i>"
+                f"<i>\"多么精彩的战斗！看板娘看得热血沸腾喵！\"</i>"
             )
             del context.bot_data["duels"][duel_id]
         except Exception as e:
             session.rollback()
-            await query.edit_message_text(
-                f"⚠️ <b>决斗出错</b>\n\n<i>\"魔法阵不稳定...决斗已取消，请稍后再试！\"</i>"
+            await query.edit_message_html(
+                f"⚠️ <b>决斗出错</b>\n\n<i>\"魔法阵不稳定...决斗已取消，请稍后再试喵！\"</i>"
             )
             if duel_id in context.bot_data.get("duels", {}):
                 del context.bot_data["duels"][duel_id]
         finally:
             session.close()
+
+
+def get_weapon_rarity_bonus(weapon: str) -> int:
+    """根据武器稀有度返回战力加成"""
+    if not weapon:
+        return 0
+    weapon_upper = weapon.upper()
+    if "SSR" in weapon_upper or "神器" in weapon_upper:
+        return 15
+    elif "SR" in weapon_upper or "史诗" in weapon_upper:
+        return 10
+    elif "R" in weapon_upper or "稀有" in weapon_upper or "普通" in weapon_upper:
+        return 5
+    elif "咸鱼" in weapon_upper:
+        return -5  # 咸鱼武器扣分哈哈
+    return 0
+
+
+def generate_battle_text(cha_name: str, cha_atk: int, cha_wep: str,
+                         opp_name: str, opp_atk: int, opp_wep: str,
+                         cha_wins: bool, win_chance: float) -> str:
+    """生成决斗过程的描述文本"""
+    # 武器显示
+    cha_weapon = cha_wep if cha_wep else "赤手空拳"
+    opp_weapon = opp_wep if opp_wep else "赤手空拳"
+
+    # 战力对比文本
+    if cha_atk > opp_atk * 1.5:
+        adv_text = f"{cha_name} 压倒性优势！"
+    elif cha_atk > opp_atk * 1.2:
+        adv_text = f"{cha_name} 略占上风"
+    elif opp_atk > cha_atk * 1.5:
+        adv_text = f"{opp_name} 压倒性优势！"
+    elif opp_atk > cha_atk * 1.2:
+        adv_text = f"{opp_name} 略占上风"
+    else:
+        adv_text = "势均力敌！"
+
+    # 战斗动作描述
+    actions = [
+        f"🌟 {cha_name} 以 {cha_atk} 战力，挥舞【{cha_weapon}】发起进攻！",
+        f"⚡ {opp_name} 以 {opp_atk} 战力，装备【{opp_weapon}】迎击！",
+    ]
+
+    # 随机添加额外描述
+    extra_moves = [
+        "✨ 魔法阵光芒四射！",
+        "💫 空间开始扭曲...",
+        "🔥 炽热的魔力碰撞！",
+        "❄️ 冰冷的杀气弥漫！",
+        "🌈 彩虹般的能量爆发！",
+    ]
+    if len(extra_moves) > 0:
+        actions.append(f"    {random.choice(extra_moves)}")
+
+    if cha_wins:
+        actions.append(f"🎯 <b>{cha_name}</b> 的攻击突破了防御！")
+    else:
+        actions.append(f"🎯 <b>{opp_name}</b> 的反击致命一击！")
+
+    return "\n".join(actions) + f"\n\n📊 <i>({adv_text})</i>\n"
 
 
 # ==========================================

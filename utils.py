@@ -78,6 +78,37 @@ async def _delete_after(message: Message, delay: int) -> None:
         pass
 
 
+async def send_with_auto_delete(
+    bot,
+    chat_id: int,
+    text: str,
+    delay: Optional[int] = None,
+    **kwargs
+) -> Optional[Message]:
+    """
+    发送消息并在延迟后自动删除（群组有效）
+
+    Args:
+        bot: Bot 实例
+        chat_id: 目标聊天ID
+        text: 消息文本
+        delay: 延迟秒数，None 则使用配置默认值
+        **kwargs: 传递给 send_message 的其他参数
+
+    Returns:
+        发送的消息对象（如果发送成功）
+    """
+    msg = await bot.send_message(chat_id, text, **kwargs)
+
+    # 只在群组中自毁
+    if msg and msg.chat.type != "private":
+        delay = delay if delay is not None else Config.MESSAGE_DELETE_DELAY
+        if delay > 0:
+            asyncio.create_task(_delete_after(msg, delay))
+
+    return msg
+
+
 async def edit_with_auto_delete(
     query: CallbackQuery,
     text: str,

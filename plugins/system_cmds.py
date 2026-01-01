@@ -18,6 +18,7 @@ PUBLIC_COMMANDS = [
     ("forge", "⚒️ 灵装炼金"),
     ("myweapon", "⚔️ 我的装备"),
     ("mission", "📜 悬赏公会"),
+    ("task", "📋 发布悬赏"),
     ("duel", "⚔️ 魔法决斗"),
     ("poster", "🎰 命运盲盒"),
     ("tarot", "🔮 塔罗占卜"),

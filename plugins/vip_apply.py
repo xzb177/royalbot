@@ -8,6 +8,7 @@ from telegram.ext import CommandHandler, MessageHandler, CallbackQueryHandler, f
 from database import Session, UserBinding, VIPApplication
 from config import Config
 from datetime import datetime
+from utils import send_with_auto_delete
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +24,12 @@ async def apply_vip_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not u or not u.emby_account:
         session.close()
-        await update.message.reply_html("💔 <b>请先绑定账号！</b>\n使用 <code>/bind 账号</code> 绑定后再申请VIP。")
+        await update.message.reply_html("💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再申请VIP。")
         return
 
     if u.is_vip:
         session.close()
-        await update.message.reply_html("👑 <b>您已经是VIP了！</b>\n无需重复申请~")
+        await update.message.reply_html("👑 <b>您已经是皇家魔法少女了喵！</b>\n无需重复申请~")
         return
 
     # 检查是否有待审核的申请
@@ -44,7 +45,7 @@ async def apply_vip_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         session.close()
         await update.message.reply_html(
-            f"⏳ <b>您有待审核的申请！</b>\n\n"
+            f"⏳ <b>您有待审核的申请喵！</b>\n\n"
             f"请直接发送证明材料，或使用 <code>/cancel</code> 取消申请"
         )
         return
@@ -68,14 +69,14 @@ async def apply_vip_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     txt = (
-        f"📜 <b>【 V I P · 申 请 流 程 】</b>\n\n"
-        f"✨ <b>欢迎申请，{user.first_name}！</b>\n"
-        f"请发送您的证明材料（截图、图片等）\n\n"
+        f"📜 <b>【 V I P · 觉 醒 仪 式 】</b>\n\n"
+        f"✨ <b>欢迎申请，{user.first_name}酱！</b>\n"
+        f"请发送您的证明材料（截图、图片等）喵~\n\n"
         f"💠 <b>:: 申 请 指 南 ::</b>\n"
         f"1️⃣ 发送支付凭证/会员截图\n"
         f"2️⃣ 等待管理员审核\n"
-        f"3️⃣ 审核通过后自动开通VIP\n\n"
-        f"<i>\"请直接发送图片，看板娘会帮您转交给管理员！(｡•̀ᴗ-)✧\"</i>\n\n"
+        f"3️⃣ 审核通过后自动觉醒VIP\n\n"
+        f"<i>\"请直接发送图片，看板娘会帮您转交给管理员喵~(｡•̀ᴗ-)✧\"</i>\n\n"
         f"🚫 <b>发送 /cancel 取消申请</b>"
     )
     await update.message.reply_html(txt)
@@ -226,8 +227,8 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 通知用户
         await update.message.reply_html(
-            f"✅ <b>材料已提交！</b>\n\n"
-            f"您的{material_info}已转交给管理员，请耐心等待审核结果~\n\n"
+            f"✅ <b>材料已提交喵~</b>\n\n"
+            f"您的{material_info}已转交给管理员，请耐心等待审核结果喵~\n\n"
             f"<i>\"审核通过后会通知您哦！(ง •_•)ง\"</i>"
         )
 
@@ -309,7 +310,7 @@ async def admin_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
         # ========== 群组通报：尊贵仪式感 ==========
-        if Config.GROUP_ID > 0:
+        if Config.GROUP_ID:  # 群组ID通常是负数(-100...)，用真值判断
             try:
                 # 获取用户信息用于显示
                 user_display = app.username
@@ -321,18 +322,25 @@ async def admin_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     f"🎺 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                     f"👑 <b>【 皇 家 加 冕 · 新 晋 V I P 】</b> 👑\n"
                     f"🎺 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"✨ <b>恭 喜</b> <a href=\"tg://user?id={app.tg_id}\">{user_display}</a> <b>晋 升 V I P ！</b> ✨\n\n"
-                    f"💠 <b>:: 尊 贵 特 权 已 激 活 ::</b>\n"
-                    f"🚀 4K 极速通道 · 流畅观影\n"
-                    f"🏦 皇家银行 · 零手续费\n"
-                    f"💰 双倍签到 · 魔力加成\n\n"
+                    f"✨ <b>恭 喜</b> <a href=\"tg://user?id={app.tg_id}\">{user_display}</a> <b>觉 醒 V I P ！</b> ✨\n\n"
+                    f"💠 <b>:: 皇 家 特 权 已 激 活 ::</b>\n"
+                    f"🚀 4K 极速通道 · 画质飞升\n"
+                    f"🏰 皇家金库 · 0 手续费\n"
+                    f"💰 双倍签到 · 2x 收益\n"
+                    f"⚒️ 炼金工坊 · 锻造 5 折\n"
+                    f"🔮 命运眷顾 · 塔罗 5 折\n"
+                    f"🎁 魔力转赠 · 免手续费\n"
+                    f"📜 悬赏加成 · 奖励暴击\n"
+                    f"⚔️ 决斗祝福 · +8% 胜率\n"
+                    f"🏆 星辰称号 · 尊贵头衔\n\n"
                     f"🌟 <b>感 谢 您 的 支 持 ！</b>\n"
-                    f"<i>\"愿您的观影之旅，如星光般璀璨 (｡•̀ᴗ-)✧\"</i>\n"
+                    f"<i>\"愿您的魔法之旅，如星光般璀璨 (｡•̀ᴗ-)✧\"</i>\n"
                     f"🎺 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 )
-                await context.bot.send_message(
-                    chat_id=Config.GROUP_ID,
-                    text=announcement,
+                await send_with_auto_delete(
+                    context.bot,
+                    Config.GROUP_ID,
+                    announcement,
                     parse_mode='HTML'
                 )
             except Exception as e:
@@ -358,14 +366,20 @@ async def admin_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await context.bot.send_message(
                 chat_id=app.tg_id,
                 text=(
-                    f"🎉 <b>【 V I P · 审 核 通 过 ！】</b>\n\n"
-                    f"🥂 <b>恭喜 {app.username}！</b>\n"
-                    f"您的VIP申请已通过审核！\n\n"
-                    f"💠 <b>:: 激 活 特 权 ::</b>\n"
-                    f"✅ 4K 极速通道\n"
-                    f"✅ 皇家银行（免手续费）\n"
-                    f"✅ 双倍签到魔力\n\n"
-                    f"<i>\"感谢您的支持，尽情享受吧！(｡•̀ᴗ-)✧\"</i>"
+                    f"🎉 <b>【 V I P · 觉 醒 成 功 ！】</b>\n\n"
+                    f"🥂 <b>恭喜 {app.username}酱！</b>\n"
+                    f"您的VIP申请已通过审核喵~\n\n"
+                    f"💠 <b>:: 皇 家 特 权 激 活 ::</b>\n"
+                    f"🚀 4K 极速通道 ─ 已开启\n"
+                    f"🏰 皇家金库 ─ 0 手续费\n"
+                    f"💰 双倍魔力 ─ 签到 2x 收益\n"
+                    f"⚒️ 炼金工坊 ─ 锻造 5 折\n"
+                    f"🔮 命运眷顾 ─ 塔罗 5 折\n"
+                    f"🎁 魔力转赠 ─ 免手续费\n"
+                    f"📜 悬赏加成 ─ 奖励暴击\n"
+                    f"⚔️ 决斗祝福 ─ +8% 胜率\n"
+                    f"🏆 星辰称号 ─ 尊贵头衔\n\n"
+                    f"<i>「感谢您的支持，尽情享受魔法少女的生活吧~(｡•̀ᴗ-)✧」</i>"
                 ),
                 parse_mode='HTML'
             )
@@ -415,10 +429,10 @@ async def admin_review_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await context.bot.send_message(
                 chat_id=app.tg_id,
                 text=(
-                    f"💔 <b>【 V I P · 审 核 未 通 过 】</b>\n\n"
-                    f"很遗憾，您的VIP申请未通过审核。\n"
+                    f"💔 <b>【 V I P · 觉 醒 未 通 过 】</b>\n\n"
+                    f"很遗憾，您的VIP申请未通过审核喵...\n"
                     f"如有疑问请联系管理员。\n\n"
-                    f"<i>\"请检查材料后重新申请吧！加油！(ง •_•)ง\"</i>"
+                    f"<i>\"请检查材料后重新申请吧！加油喵~(ง •_•)ง\"</i>"
                 ),
                 parse_mode='HTML'
             )

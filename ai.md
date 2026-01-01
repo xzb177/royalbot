@@ -408,3 +408,441 @@ atk = user.attack if user.attack is not None else 10
 - 可考虑同步更新 `hall.py` 排行榜也使用 VIP 专属称号
 
 ---
+
+## 2026-01-01 修复 VIP 申请批准后群组通报功能
+
+### 1. 搞定了啥
+- **修复群组通报 Bug**：VIP 批准后群组推送无反应的问题
+
+### 2. 关键信息
+**修改的文件：**
+- `plugins/vip_apply.py:312` - 条件判断修复
+
+**Bug 原因：**
+```python
+# 修复前（错误）
+if Config.GROUP_ID > 0:  # Telegram 群组 ID 是负数(-100...)，条件永远为 False
+
+# 修复后（正确）
+if Config.GROUP_ID:  # 使用真值判断，负数也能通过
+```
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+- 测试 VIP 批准后群组通报是否正常推送
+
+---
+
+## 2026-01-01 VIP 群组通报消息自毁功能
+
+### 1. 搞定了啥
+- **新增 `send_with_auto_delete()` 函数**：`utils.py` 添加直接发送消息并自毁的通用函数
+- **VIP 群组通报自毁**：批准 VIP 后的群组推送消息现在会自动删除（默认30秒）
+- **保持私聊通知不变**：用户私聊收到的通知消息不删除
+
+### 2. 关键信息
+**修改的文件：**
+- `utils.py` - 新增函数：
+  ```python
+  async def send_with_auto_delete(bot, chat_id, text, delay=None, **kwargs)
+  # 发送消息并在延迟后自动删除（仅群组有效）
+  ```
+
+- `plugins/vip_apply.py:11,334-339` - 群组通报改用 `send_with_auto_delete()`
+  ```python
+  await send_with_auto_delete(
+      context.bot,
+      Config.GROUP_ID,
+      announcement,
+      parse_mode='HTML'
+  )
+  ```
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+
+---
+
+## 2026-01-01 修复 /menu 命令升级 VIP 按钮问题
+
+### 1. 搞定了啥
+- **修复 VIP 按钮回调处理**：改用 `edit_message_text` 而不是发送新消息
+- **添加返回菜单按钮**：所有子页面都可以返回主菜单
+- **VIP 申请流程优化**：引导用户前往私聊申请，避免群组消息自毁问题
+- **决斗场页面优化**：添加返回按钮，使用编辑消息
+
+### 2. 关键信息
+**修改的文件：**
+- `plugins/start_menu.py` - 重构按钮回调处理
+
+**问题原因：**
+- 群组菜单中的 VIP 按钮点击后，使用 `reply_with_auto_delete` 发送新消息
+- 新消息在群组中会被自动删除，导致用户点击按钮时消息已不存在
+- 产生 `Unknown slash command: menu /menu` 错误
+
+**修复方案：**
+1. **`vip` 按钮** - 直接内嵌处理逻辑，使用 `edit_message_text`
+2. **`upgrade_vip` 按钮** - 改用 `edit_message_text` + 返回按钮
+3. **`apply_vip` 按钮** - 引导用户私聊申请，提供跳转链接
+4. **`back_menu` 回调** - 重新显示完整菜单
+5. **`duel_info` 按钮** - 添加返回按钮
+
+**新增回调数据：**
+- `back_menu` - 返回主菜单
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+- 测试群组菜单 VIP 按钮流程
+
+---
+
+## 2026-01-01 菜单按钮优化：删除重复 VIP 按钮，添加荣耀殿堂
+
+### 1. 搞定了啥
+- **删除重复 VIP 按钮**：移除第四个位置的 "💎升级 VIP" 按钮
+- **添加荣耀殿堂按钮**：新增 "🏆 荣耀殿堂" 按钮，链接到战力排行榜
+- **保留第一个 VIP 按钮**：普通用户显示 "💎 成为 VIP"，VIP 显示 "📜 个人档案"
+
+### 2. 关键信息
+**修改的文件：**
+- `plugins/start_menu.py`
+
+**菜单按钮布局（更新后）：**
+```
+┌─────────────────┬─────────────────┐
+│ 📜 个人档案     │ 🍬 每日签到     │  (第一行)
+│ 或 💎 成为 VIP  │                 │
+├─────────────────┼─────────────────┤
+│ 🏦 皇家银行     │ 🎒 次源背包     │  (第二行)
+├─────────────────┼─────────────────┤
+│ 🔮 命运占卜     │ 🎰 盲盒抽取     │  (第三行)
+├─────────────────┼─────────────────┤
+│ 🏆 荣耀殿堂     │ ⚔️ 决斗场       │  (第四行，已修改)
+├─────────────────┴─────────────────┤
+│ 📖 魔法指南                    │  (第五行)
+└───────────────────────────────────┘
+```
+
+**新增回调：**
+- `hall` - 调用 `hall_leaderboard()` 显示战力排行榜
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+
+---
+
+## 2026-01-01 修复菜单「魔法指南」按钮指向
+
+### 1. 搞定了啥
+- **修复按钮错误**：「📖 魔法指南」按钮从 URL 链接改为回调处理
+- **新增返回按钮**：魔法指南页面可以返回主菜单
+- **内嵌显示内容**：使用 `edit_message_text` 编辑当前消息，不发送新消息
+
+### 2. 关键信息
+**修改的文件：**
+- `plugins/start_menu.py`
+
+**修改内容：**
+- 第47行：`url="https://t.me/YourChannel"` → `callback_data="help_manual"`
+- 第305行（back_menu）：同步更新
+- 新增 `help_manual` 回调处理（第336-361行）
+
+**修改前：**
+```python
+[InlineKeyboardButton("📖 魔法指南", url="https://t.me/YourChannel")]
+```
+
+**修改后：**
+```python
+[InlineKeyboardButton("📖 魔法指南", callback_data="help_manual")]
+```
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+
+---
+
+## 2026-01-01 全局魔法少女/二次元/皇家风格文案改版
+
+### 1. 搞定了啥
+- **全局文案风格改造**：将所有插件改为魔法少女/二次元/皇家风格
+- **统一语言风格**：使用「喵~」等二次元口癖，颜文字 (｡•̀ᴗ-)✧ (≧◡≦) 等
+- **VIP/普通双体系**：VIP用户使用皇家尊贵称呼，普通用户使用见习魔法少女/学院风格
+
+### 2. 关键信息
+**修改的文件（全部12个插件）：**
+
+| 文件 | 主要改动 |
+|------|----------|
+| `start_menu.py` | 「星辰殿堂」/「魔法学院」双菜单，魔法少女主题 |
+| `checkin_bind.py` | 缔结魔法契约，领取魔力，见习魔法少女称呼 |
+| `bank.py` | 皇家魔法少女金库 / 魔法学院储蓄柜台 |
+| `bag.py` | 魔法少女的背包 |
+| `forge.py` | 魔法武器炼金，可爱/做蛋糕元素 |
+| `fun_games.py` | 塔罗占卜，魔法盲盒，魔法少女决斗 |
+| `me.py` | 星灵终极契约书 / 魔法少女档案 |
+| `vip_shop.py` | 觉醒之门，皇家魔法少女特权 |
+| `gift.py` | 魔力转赠，见习魔法少女手续费 |
+| `hall.py` | 皇家荣耀殿堂 / 魔法学院荣耀榜单 |
+| `vip_apply.py` | 觉醒仪式流程，新晋VIP群组通报 |
+
+**风格关键词：**
+- 魔法少女 / 魔法学院 / 皇家 / 星辰 / 觉醒
+- 称呼：Master / 酱 / 喵~
+- 颜文字：(｡•̀ᴗ-)✧ (≧◡≦) (｡･ω･｡)ﾉ♡ (*/ω＼*)
+
+### 3. 接下来该干嘛
+- **重启机器人**使所有文案更改生效
+- 体验全新的魔法少女风格看板娘喵~
+
+---
+
+## 2026-01-01 修复菜单「魔法指南」按钮指向
+
+### 1. 搞定了啥
+- **数据库扩展**：添加 8 个新字段支持活动追踪
+- **重写 mission.py**：从单一数学题扩展为 7 种悬赏类型
+- **聊天挖矿增强**：连击系统、时段加成、关键词彩蛋、稀有掉落
+- **多插件集成**：forge、tarot、box、gift 活动自动追踪
+
+---
+
+## 2026-01-01 修复决斗Bug + 全面增强决斗系统
+
+### 1. 搞定了啥
+- **修复决斗回调解析Bug**：别人邀请后点击"接受"显示"决斗已过期"的问题
+- **全面增强决斗玩法**：
+  - 新增战力系统影响（战力差距影响胜率）
+  - 新增武器稀有度加成（SSR+15%, SR+10%, R+5%, 咸鱼-5%）
+  - 新增战斗过程描述文本
+  - 新增胜者15%概率战力提升（1-3点）
+  - 认怂安慰奖（挑战者获得10%赌注补偿）
+  - 超时从30秒延长到60秒
+  - 胜率限制在15%-85%之间，避免过于极端
+  - VIP加成调整：挑战者+8%，应战者-5%（防守优势）
+
+### 2. 关键信息
+**修改的文件：**
+- `plugins/fun_games.py`
+
+**Bug原因：**
+```python
+# 修复前（错误）
+parts = query.data.split('_')
+# duel_accept_abc12345 -> ["duel", "accept", "abc12345"]
+action = f"{parts[1]}_{parts[2]}"  # 变成 "accept_abc12345" ❌
+duel_id = parts[3]  # 索引越界，变成 None ❌
+
+# 修复后（正确）
+parts = query.data.split('_')
+action = parts[1]  # "accept" ✅
+duel_id = parts[2]  # "abc12345" ✅
+```
+
+**新增函数：**
+- `get_weapon_rarity_bonus(weapon)` - 武器稀有度战力加成
+- `generate_battle_text()` - 生成战斗过程描述
+
+**决斗邀请界面新功能：**
+- 显示双方战力
+- 显示双方装备武器
+- 战力对比指示器（压倒性优势/略占上风/势均力敌）
+
+**胜率计算公式：**
+```python
+win_chance = 0.5 + attack_bonus + vip_bonus + weapon_bonus
+# attack_bonus: 战力差距，每2000点差±30%
+# vip_bonus: 挑战者VIP+8%，应战者VIP-5%
+# weapon_bonus: (cha_weapon - opp_weapon) / 100
+# 最终限制在 0.15 - 0.85 之间
+```
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+- 测试决斗功能
+- 可考虑添加连胜奖励、败者安慰等奖励机制
+
+---
+
+## 2026-01-01 VIP专属权益文案优化
+
+### 1. 搞定了啥
+- **VIP权益文案全面升级**：从4项扩展到9项完整权益展示
+- **统一权益列表格式**：使用 `图标 + 名称 ─ 说明` 的简洁格式
+- **多位置同步更新**：VIP中心、菜单按钮、申请批准通知全部更新
+
+### 2. 关键信息
+**修改的文件：**
+- `plugins/vip_shop.py` - VIP中心主页
+- `plugins/start_menu.py` - 菜单VIP按钮回调
+- `plugins/vip_apply.py` - VIP批准通知（群组+私聊）
+
+**完整VIP权益列表（9项）：**
+| 图标 | 权益名称 | 说明 |
+|------|----------|------|
+| 🚀 | 4K 极速通道 | 画质飞跃/已开启 |
+| 🏰 | 皇家金库 | 存取/转账 0 手续费 |
+| 💰 | 双倍魔力 | 每日签到 2x 收益 |
+| ⚒️ | 炼金工坊 | 武器锻造 5 折 |
+| 🔮 | 命运眷顾 | 塔罗占卜 5 折 |
+| 🎁 | 魔力转赠 | 免手续费（普通5%） |
+| 📜 | 悬赏加成 | 任务奖励暴击提升 |
+| ⚔️ | 决斗祝福 | 挑战时 +8% 胜率 |
+| 🏆 | 星辰称号 | 三段式尊贵头衔 |
+
+**文案格式对比：**
+```python
+# 修改前（简单列举）
+"✨ 4K 极速通道\n"
+"🏰 皇家金库（免手续费）\n"
+"💕 双倍魔力加成\n"
+"🎀 专属称号与称号\n"
+
+# 修改后（详细格式）
+"🚀 <b>4K 极速通道</b>\n"
+"   └─ 流畅观影，画质飞升~\n\n"
+"🏰 <b>皇家金库特权</b>\n"
+"   └─ 存取/转账 0 手续费\n\n"
+```
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+- 测试VIP相关文案显示效果
+
+---
+
+## 2026-01-01 修复决斗按钮回调无响应问题
+
+### 1. 搞定了啥
+- **修复决斗按钮回调无响应**：点击"接受挑战"和"认怂"按钮没有反应的问题
+- **修复回调处理器优先级冲突**：将 `start_menu.py` 的通配符回调移到 group=1
+
+### 2. 关键信息
+**问题原因：**
+- `start_menu.py` 和 `fun_games.py` 的回调处理器都在 group=0（默认优先级）
+- 插件加载顺序导致 `start_menu.py` 的通配符回调优先处理，阻止了决斗回调执行
+
+**修改的文件：**
+- `plugins/start_menu.py:389` - 回调处理器注册添加 `group=1`：
+```python
+# 修改前
+app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_).*$"))
+
+# 修改后
+app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_).*$"), group=1)
+```
+
+**Telegram 回调处理器优先级：**
+- group 值越小，优先级越高
+- 默认 group=0，具体回调应该使用 group=0
+- 通配符/兜底回调应该使用更高的 group 值（如 group=1）
+
+### 3. 接下来该干嘛
+- 测试决斗功能是否正常工作
+- 如有类似回调问题，其他模块也可参考此解决方案
+
+---
+
+## 2026-01-01 修复塔罗占卜命令无响应问题
+
+### 1. 搞定了啥
+- **修复 `/tarot` 命令无响应**：在某些情况下 `update.message` 为 `None` 导致命令失败
+- **全面修复 fun_games.py**：所有命令处理函数改用 `update.effective_message`
+- **增强代码健壮性**：添加空值检查，防止 AttributeError
+
+### 2. 关键信息
+**问题原因：**
+```python
+# 修复前（错误）
+async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await reply_with_auto_delete(update.message, txt)  # update.message 可能为 None
+
+# 修复后（正确）
+async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message  # 安全的消息获取
+    if not msg:
+        return
+    await reply_with_auto_delete(msg, txt)
+```
+
+**修改的文件：**
+- `plugins/fun_games.py` - 修复了三个函数：
+  - `tarot()` - 塔罗占卜（第49-105行）
+  - `gacha_poster()` - 盲盒抽取（第169-249行）
+  - `duel_start()` - 决斗发起（第259-409行）
+
+**`update.effective_message` vs `update.message`：**
+- `update.message` - 仅在消息更新时存在
+- `update.effective_message` - Telegram 提供的安全封装，自动处理各种更新类型
+
+### 3. 接下来该干嘛
+- **重启机器人**使修改生效
+- 测试 `/tarot`、`/poster`、`/duel` 命令
+
+---
+
+## 2026-01-01 修复 fun_games.py 导入路径错误
+
+### 1. 搞定了啥
+- **修复模块导入错误**：`from mission import ...` 改为 `from plugins.mission import ...`
+- **创建安全重启脚本**：`restart.sh` 确保只有一个进程运行
+
+### 2. 关键信息
+**问题原因：**
+```
+ModuleNotFoundError: No module named 'mission'
+```
+fun_games.py 中使用了错误的导入路径：
+```python
+# 修复前（错误）
+from mission import track_activity
+
+# 修复后（正确）
+from plugins.mission import track_activity
+```
+
+**修改的文件：**
+- `plugins/fun_games.py:19,25` - 导入路径修复
+
+**新增文件：**
+- `/root/royalbot/restart.sh` - 安全重启脚本
+  ```bash
+  # 使用方法
+  /root/royalbot/restart.sh
+  ```
+
+### 3. 接下来该干嘛
+- 测试 `/tarot`、`/poster`、`/duel` 命令确认修复成功
+
+---
+
+## 2026-01-01 修复个人档案「圣物锻造」按钮
+
+### 1. 搞定了啥
+- **修复「圣物锻造」按钮无响应**：添加缺失的 `forge_go_callback` 回调处理器
+- **复用现有逻辑**：调用 forge.py 的 `forge_callback` 实现锻造功能
+
+### 2. 关键信息
+**问题原因：**
+- `me.py` 中定义了 `callback_data="forge_go"` 按钮
+- 但没有注册对应的回调处理器
+
+**修改的文件：**
+- `plugins/me.py:200-204` - 添加 `forge_go_callback` 函数
+- `plugins/me.py:243` - 注册回调处理器
+
+```python
+# 新增函数
+async def forge_go_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理「立即锻造」按钮回调 - 调用 forge.py 的锻造逻辑"""
+    from plugins.forge import forge_callback
+    await forge_callback(update, context)
+
+# 新增注册
+app.add_handler(CallbackQueryHandler(forge_go_callback, pattern="^forge_go$"))
+```
+
+### 3. 接下来该干嘛
+- 测试个人档案中的「圣物锻造」按钮
+
+---
