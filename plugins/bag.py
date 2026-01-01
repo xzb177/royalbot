@@ -113,7 +113,8 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📜 个人档案", callback_data="bag_me")]
     ]
 
-    await msg.reply_html(
+    await reply_with_auto_delete(
+        msg,
         txt,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )

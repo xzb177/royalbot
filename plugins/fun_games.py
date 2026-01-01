@@ -436,6 +436,7 @@ async def duel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         adv_emoji = "⚖️"
         adv_text = "势均力敌"
 
+    # 决斗邀请消息不自毁（需要对方点击按钮）
     sent_msg = await msg.reply_html(
         f"⚔️ <b>【 魔 法 少 女 · 决 斗 展 开 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"

@@ -8,7 +8,7 @@ from telegram.ext import CommandHandler, MessageHandler, CallbackQueryHandler, f
 from database import Session, UserBinding, VIPApplication
 from config import Config
 from datetime import datetime
-from utils import send_with_auto_delete
+from utils import send_with_auto_delete, reply_with_auto_delete
 
 logger = logging.getLogger(__name__)
 
@@ -19,17 +19,20 @@ pending_applications = {}  # {tg_id: {"step": "waiting_material", "application_i
 async def apply_vip_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """开始VIP申请流程"""
     user = update.effective_user
+    msg = update.effective_message
     session = Session()
     u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
     if not u or not u.emby_account:
         session.close()
-        await update.message.reply_html("💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再申请VIP。")
+        if msg:
+            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再申请VIP。")
         return
 
     if u.is_vip:
         session.close()
-        await update.message.reply_html("👑 <b>您已经是皇家魔法少女了喵！</b>\n无需重复申请~")
+        if msg:
+            await reply_with_auto_delete(msg, "👑 <b>您已经是皇家魔法少女了喵！</b>\n无需重复申请~")
         return
 
     # 检查是否有待审核的申请
@@ -44,10 +47,11 @@ async def apply_vip_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "application_id": existing.id
         }
         session.close()
-        await update.message.reply_html(
-            f"⏳ <b>您有待审核的申请喵！</b>\n\n"
-            f"请直接发送证明材料，或使用 <code>/cancel</code> 取消申请"
-        )
+        if msg:
+            await reply_with_auto_delete(msg,
+                f"⏳ <b>您有待审核的申请喵！</b>\n\n"
+                f"请直接发送证明材料，或使用 <code>/cancel</code> 取消申请"
+            )
         return
 
     # 创建申请记录
@@ -109,7 +113,9 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             session.close()
             # 没有待审核申请，发送提示
-            await update.message.reply_text("⚠️ 未找到待审核的申请，请先使用 /applyvip 申请")
+            msg = update.effective_message
+            if msg:
+                await reply_with_auto_delete(msg, "⚠️ 未找到待审核的申请，请先使用 /applyvip 申请")
             return
     else:
         app_info = pending_applications[user.id]
@@ -118,7 +124,9 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not app or app.status != 'pending':
         session.close()
         pending_applications.pop(user.id, None)
-        await update.message.reply_text("⚠️ 申请记录不存在或已失效")
+        msg = update.effective_message
+        if msg:
+            await reply_with_auto_delete(msg, "⚠️ 申请记录不存在或已失效")
         return
 
     logger.info(f"处理材料: user={user.id}, app_id={app.id}, owner_id={Config.OWNER_ID}")
@@ -200,11 +208,13 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"转发材料给管理员失败: {e}", exc_info=True)
         error_occurred = True
         session.close()
-        await update.message.reply_html(
-            f"❌ <b>提交失败</b>\n\n"
-            f"材料转发给管理员时出错：{str(e)}\n\n"
-            f"请联系管理员检查配置。"
-        )
+        msg = update.effective_message
+        if msg:
+            await reply_with_auto_delete(msg,
+                f"❌ <b>提交失败</b>\n\n"
+                f"材料转发给管理员时出错：{str(e)}\n\n"
+                f"请联系管理员检查配置。"
+            )
         return
 
     if forwarded:
@@ -226,21 +236,25 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # 通知用户
-        await update.message.reply_html(
-            f"✅ <b>材料已提交喵~</b>\n\n"
-            f"您的{material_info}已转交给管理员，请耐心等待审核结果喵~\n\n"
-            f"<i>\"审核通过后会通知您哦！(ง •_•)ง\"</i>"
-        )
+        msg = update.effective_message
+        if msg:
+            await reply_with_auto_delete(msg,
+                f"✅ <b>材料已提交喵~</b>\n\n"
+                f"您的{material_info}已转交给管理员，请耐心等待审核结果喵~\n\n"
+                f"<i>\"审核通过后会通知您哦！(ง •_•)ง\"</i>"
+            )
 
         # 清除临时状态
         pending_applications.pop(user.id, None)
     else:
         # 没有可转发的材料（用户发的是不支持的内容）
         session.close()
-        await update.message.reply_html(
-            "⚠️ <b>未识别到有效的证明材料</b>\n\n"
-            "请发送图片、文档或文字说明作为证明材料。"
-        )
+        msg = update.effective_message
+        if msg:
+            await reply_with_auto_delete(msg,
+                "⚠️ <b>未识别到有效的证明材料</b>\n\n"
+                "请发送图片、文档或文字说明作为证明材料。"
+            )
         return
 
     session.close()
@@ -249,6 +263,7 @@ async def handle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """取消申请"""
     user = update.effective_user
+    msg = update.effective_message
     session = Session()
 
     # 清除内存中的状态
@@ -264,9 +279,11 @@ async def cancel_apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.close()
 
     if was_in_flow or deleted > 0:
-        await update.message.reply_html("🚫 <b>申请已取消</b>")
+        if msg:
+            await reply_with_auto_delete(msg, "🚫 <b>申请已取消</b>")
     else:
-        await update.message.reply_html("⚠️ <b>没有进行中的申请</b>")
+        if msg:
+            await reply_with_auto_delete(msg, "⚠️ <b>没有进行中的申请</b>")
 
 
 async def admin_review_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

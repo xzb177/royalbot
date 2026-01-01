@@ -71,7 +71,9 @@ async def help_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• <code>/hall</code> - 排行榜\n\n"
         f"<i>\"遇到困难的话...随时召唤看板娘哦！(｡•̀ᴗ-)✧\"</i>"
     )
-    await update.message.reply_html(txt)
+    msg = update.effective_message
+    if msg:
+        await reply_with_auto_delete(msg, txt)
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理按钮点击事件"""

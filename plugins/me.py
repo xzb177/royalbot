@@ -2,7 +2,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import Session, UserBinding
-from utils import edit_with_auto_delete
+from utils import edit_with_auto_delete, reply_with_auto_delete
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +90,14 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not user_data or not user_data.emby_account:
             session.close()
-            await update.message.reply_html(
-                "💔 <b>【 魔 力 断 连 】</b>\n\n"
-                "我看不到您的灵魂波长... (´;ω;`)\n"
-                "👉 请使用 <code>/bind</code> 重新缔结契约！"
-            )
+            msg = update.effective_message
+            if msg:
+                await reply_with_auto_delete(
+                    msg,
+                    "💔 <b>【 魔 力 断 连 】</b>\n\n"
+                    "我看不到您的灵魂波长... (´;ω;`)\n"
+                    "👉 请使用 <code>/bind</code> 重新缔结契约！"
+                )
             return
 
         # 数据准备

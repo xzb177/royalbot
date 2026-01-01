@@ -246,7 +246,8 @@ async def passive_chat_reward(update: Update, context: ContextTypes.DEFAULT_TYPE
             if u.chat_combo >= 5:
                 msg += f"\n🔥 <b>连击 x{u.chat_combo}!</b>"
 
-            await update.message.reply_html(
+            await reply_with_auto_delete(
+                update.message,
                 msg,
                 disable_notification=True
             )
