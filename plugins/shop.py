@@ -253,10 +253,86 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
         result_msg = f"⚡ <b>获得 300 MP！(净赚150)</b>"
 
     elif item_id == "box":
-        # 神秘宝箱：随机开出100-300MP (从50-500调整，期望200)
-        gain = random.randint(100, 300)
-        u.points += gain
-        result_msg = f"🎁 <b>宝箱开出 {gain} MP！</b>"
+        # 神秘宝箱：多种稀有度掉落
+        # 稀有度: 普通60%, 稀有25%, 史诗10%, 传说4%, 神话1%
+        roll = random.random() * 100
+        rarity = ""
+        rewards = []
+
+        # 神话 (1%)
+        if roll < 1:
+            rarity = "🌸 神话"
+            mythic_rewards = [
+                ("MP", random.randint(1500, 3000), "💎"),
+                ("free_forge_big", 1, "⚒️"),
+                ("extra_gacha", 3, "🎰"),
+            ]
+            rewards = [random.choice(mythic_rewards)]
+        # 传说 (4%)
+        elif roll < 5:
+            rarity = "🌟 传说"
+            legendary_rewards = [
+                ("MP", random.randint(500, 1000), "💎"),
+                ("free_forge_big", 1, "⚒️"),
+                ("extra_gacha", 2, "🎰"),
+                ("extra_tarot", 2, "🔮"),
+            ]
+            rewards = [random.choice(legendary_rewards)]
+        # 史诗 (10%)
+        elif roll < 15:
+            rarity = "🟣 史诗"
+            epic_rewards = [
+                ("MP", random.randint(250, 450), "💰"),
+                ("lucky_boost", 1, "🍀"),
+                ("shield_active", 1, "🛡️"),
+                ("extra_gacha", 1, "🎰"),
+                ("extra_tarot", 1, "🔮"),
+                ("free_forge_small", 1, "⚒️"),
+            ]
+            rewards = [random.choice(epic_rewards)]
+        # 稀有 (25%)
+        elif roll < 40:
+            rarity = "🔵 稀有"
+            rare_rewards = [
+                ("MP", random.randint(120, 220), "💰"),
+                ("extra_tarot", 1, "🔮"),
+                ("free_forge_small", 1, "⚒️"),
+            ]
+            rewards = [random.choice(rare_rewards)]
+        # 普通 (60%)
+        else:
+            rarity = "⚪ 普通"
+            common_rewards = [
+                ("MP", random.randint(50, 120), "💰"),
+            ]
+            rewards = [random.choice(common_rewards)]
+
+        # 发放奖励
+        reward_texts = []
+        for reward_type, amount, emoji in rewards:
+            if reward_type == "MP":
+                u.points += amount
+                reward_texts.append(f"{emoji} {amount} MP")
+            elif reward_type == "lucky_boost":
+                u.lucky_boost = True
+                reward_texts.append(f"{emoji} 幸运草")
+            elif reward_type == "shield_active":
+                u.shield_active = True
+                reward_texts.append(f"{emoji} 防御卷轴")
+            elif reward_type == "extra_tarot":
+                u.extra_tarot = (u.extra_tarot or 0) + amount
+                reward_texts.append(f"{emoji} 塔罗券×{amount}")
+            elif reward_type == "extra_gacha":
+                u.extra_gacha = (u.extra_gacha or 0) + amount
+                reward_texts.append(f"{emoji} 盲盒券×{amount}")
+            elif reward_type == "free_forge_small":
+                u.free_forges = (u.free_forges or 0) + amount
+                reward_texts.append(f"{emoji} 锻造锤(小)")
+            elif reward_type == "free_forge_big":
+                u.free_forges_big = (u.free_forges_big or 0) + amount
+                reward_texts.append(f"{emoji} 锻造锤(大)")
+
+        result_msg = f"{rarity}\n🎁 <b>获得：{', '.join(reward_texts)}</b>"
         # 更新限购计数
         u.daily_box_buy_count = (u.daily_box_buy_count or 0) + 1
         u.last_box_buy_date = datetime.now()
@@ -298,25 +374,32 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
         result_msg = "⚒️ <b>获得高级锻造券(稀有度UP)！</b>"
 
     session.commit()
+
+    # 在关闭session前保存需要的值
+    user_account = u.emby_account
+    is_vip = u.is_vip
+    remaining_points = u.points
+
     session.close()
 
-    vip_badge = " 👑" if u.is_vip else ""
+    vip_badge = " 👑" if is_vip else ""
 
     txt = (
         f"🛒 <b>【 购 买 成 功 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>客人：</b> {u.emby_account}{vip_badge}\n"
+        f"👤 <b>客人：</b> {user_account}{vip_badge}\n"
         f"✨ <b>购买：</b> {item['name']}\n"
         f"💸 <b>花费：</b> {price} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{result_msg}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"💎 <b>剩余魔力：</b> {u.points} MP\n"
+        f"💎 <b>剩余魔力：</b> {remaining_points} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"<i>\"感谢惠顾！期待您的下次光临喵~(｡•̀ᴗ-)✧\"</i>"
     )
 
-    await reply_with_auto_delete(msg, txt)
+    # 购买成功消息不自动删除，让用户看到结果
+    await msg.reply_html(txt)
 
 
 async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -385,9 +468,86 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u.points += gain
         result_msg = f"⚡ <b>获得 300 MP！(净赚150)</b>"
     elif item_id == "box":
-        gain = random.randint(100, 300)
-        u.points += gain
-        result_msg = f"🎁 <b>宝箱开出 {gain} MP！</b>"
+        # 神秘宝箱：多种稀有度掉落
+        # 稀有度: 普通60%, 稀有25%, 史诗10%, 传说4%, 神话1%
+        roll = random.random() * 100
+        rarity = ""
+        rewards = []
+
+        # 神话 (1%)
+        if roll < 1:
+            rarity = "🌸 神话"
+            mythic_rewards = [
+                ("MP", random.randint(1500, 3000), "💎"),
+                ("free_forge_big", 1, "⚒️"),
+                ("extra_gacha", 3, "🎰"),
+            ]
+            rewards = [random.choice(mythic_rewards)]
+        # 传说 (4%)
+        elif roll < 5:
+            rarity = "🌟 传说"
+            legendary_rewards = [
+                ("MP", random.randint(500, 1000), "💎"),
+                ("free_forge_big", 1, "⚒️"),
+                ("extra_gacha", 2, "🎰"),
+                ("extra_tarot", 2, "🔮"),
+            ]
+            rewards = [random.choice(legendary_rewards)]
+        # 史诗 (10%)
+        elif roll < 15:
+            rarity = "🟣 史诗"
+            epic_rewards = [
+                ("MP", random.randint(250, 450), "💰"),
+                ("lucky_boost", 1, "🍀"),
+                ("shield_active", 1, "🛡️"),
+                ("extra_gacha", 1, "🎰"),
+                ("extra_tarot", 1, "🔮"),
+                ("free_forge_small", 1, "⚒️"),
+            ]
+            rewards = [random.choice(epic_rewards)]
+        # 稀有 (25%)
+        elif roll < 40:
+            rarity = "🔵 稀有"
+            rare_rewards = [
+                ("MP", random.randint(120, 220), "💰"),
+                ("extra_tarot", 1, "🔮"),
+                ("free_forge_small", 1, "⚒️"),
+            ]
+            rewards = [random.choice(rare_rewards)]
+        # 普通 (60%)
+        else:
+            rarity = "⚪ 普通"
+            common_rewards = [
+                ("MP", random.randint(50, 120), "💰"),
+            ]
+            rewards = [random.choice(common_rewards)]
+
+        # 发放奖励
+        reward_texts = []
+        for reward_type, amount, emoji in rewards:
+            if reward_type == "MP":
+                u.points += amount
+                reward_texts.append(f"{emoji} {amount} MP")
+            elif reward_type == "lucky_boost":
+                u.lucky_boost = True
+                reward_texts.append(f"{emoji} 幸运草")
+            elif reward_type == "shield_active":
+                u.shield_active = True
+                reward_texts.append(f"{emoji} 防御卷轴")
+            elif reward_type == "extra_tarot":
+                u.extra_tarot = (u.extra_tarot or 0) + amount
+                reward_texts.append(f"{emoji} 塔罗券×{amount}")
+            elif reward_type == "extra_gacha":
+                u.extra_gacha = (u.extra_gacha or 0) + amount
+                reward_texts.append(f"{emoji} 盲盒券×{amount}")
+            elif reward_type == "free_forge_small":
+                u.free_forges = (u.free_forges or 0) + amount
+                reward_texts.append(f"{emoji} 锻造锤(小)")
+            elif reward_type == "free_forge_big":
+                u.free_forges_big = (u.free_forges_big or 0) + amount
+                reward_texts.append(f"{emoji} 锻造锤(大)")
+
+        result_msg = f"{rarity}\n🎁 <b>获得：{', '.join(reward_texts)}</b>"
         # 更新限购计数
         u.daily_box_buy_count = (u.daily_box_buy_count or 0) + 1
         u.last_box_buy_date = datetime.now()
@@ -417,20 +577,26 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_msg = "⚒️ <b>获得高级锻造券(稀有度UP)！</b>"
 
     session.commit()
+
+    # 在关闭session前保存需要的值
+    user_account = u.emby_account
+    is_vip = u.is_vip
+    remaining_points = u.points
+
     session.close()
 
-    vip_badge = " 👑" if u.is_vip else ""
+    vip_badge = " 👑" if is_vip else ""
 
     txt = (
         f"🛒 <b>【 购 买 成 功 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>客人：</b> {u.emby_account}{vip_badge}\n"
+        f"👤 <b>客人：</b> {user_account}{vip_badge}\n"
         f"✨ <b>购买：</b> {item['name']}\n"
         f"💸 <b>花费：</b> {price} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{result_msg}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"💎 <b>剩余魔力：</b> {u.points} MP\n"
+        f"💎 <b>剩余魔力：</b> {remaining_points} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"<i>\"感谢惠顾！期待您的下次光临喵~(｡•̀ᴗ-)✧\"</i>"
     )

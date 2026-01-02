@@ -1507,3 +1507,111 @@ tail -f /tmp/royalbot.log
 - 等待用户指示下一项任务
 
 ---
+
+## 2026-01-02 v2.0 粘性增强大更新
+
+### 1. 搞定了啥
+- **每日任务系统**：每天3个随机任务（聊天/签到/塔罗/锻造/盲盒/决斗/转赠/购物）
+- **幸运转盘**：每日免费抽奖，VIP享受额外次数
+- **在线活跃度系统**：群聊发言累积活跃点，达成阈值自动发奖
+- **幸运空投**：管理员手动触发，120秒抢宝箱玩法
+- **统一任务系统**：融合每日任务和悬赏任务，标签页切换界面
+- **更新日志文件**：新增 CHANGELOG.md
+
+### 2. 关键信息
+
+**新增文件（5个）：**
+- `CHANGELOG.md` - 版本更新日志
+- `migrate_db.py` - 数据库迁移脚本
+- `plugins/unified_mission.py` - 统一任务系统（替代 mission.py）
+- `plugins/lucky_wheel.py` - 幸运转盘系统
+- `plugins/presence.py` - 在线活跃度系统
+- `plugins/airdrop.py` - 幸运空投系统
+
+**删除文件（1个）：**
+- `plugins/mission.py` - 旧悬赏系统（已被 unified_mission.py 替代）
+
+**新增命令：**
+| 命令 | 功能 |
+|------|------|
+| `/tasks` / `/missions` | 查看统一任务界面 |
+| `/wheel` / `/spin` / `/lucky` | 幸运转盘抽奖 |
+| `/active` / `/presence` | 查看活跃度 |
+| `/rank` | 活跃排行榜 |
+| `/airdrop` | 触发幸运空投(管理员) |
+
+**数据库扩展字段：**
+```python
+# 任务系统
+daily_tasks = Column(String, default="")          # 每日任务ID列表
+task_progress = Column(String, default="")        # 任务进度
+task_date = Column(DateTime)                      # 任务日期
+
+# 活跃度系统
+daily_presence_points = Column(Integer, default=0)    # 今日活跃点
+total_presence_points = Column(Integer, default=0)    # 累计活跃点
+last_active_time = Column(DateTime)                   # 上次活跃时间
+presence_levels_claimed = Column(String, default="")  # 已领取等级
+
+# 转盘系统
+last_wheel_date = Column(DateTime)                  # 上次转盘日期
+wheel_spins_today = Column(Integer, default=0)       # 今日转盘次数
+```
+
+### 3. Git 提交
+- **提交 ID**: `f19a7c8`
+- **仓库**: `git@github.com:xzb177/royalbot.git`
+- **变更**: 14 个文件，1779 行新增，698 行删除
+
+### 4. 接下来该干嘛
+- 重启机器人使新功能生效
+- 测试每日任务系统
+- 测试幸运转盘功能
+- 测试在线活跃度系统
+- 测试幸运空投功能
+
+---
+
+## 2026-01-02 机器人重启（v2.0 更新后）
+
+### 1. 搞定了啥
+- **运行数据库迁移**：添加所有新功能字段
+- **重启机器人**：PID 1936185 运行正常
+- **验证功能**：所有 19 个模块成功加载
+
+### 2. 关键信息
+**当前运行状态：**
+- PID: 1936185
+- 启动时间: 2026-01-02 03:02
+- 状态: 正常运行
+
+**数据库新增字段（迁移完成）：**
+```sql
+-- 每日任务系统
+daily_tasks VARCHAR(100)
+task_progress VARCHAR(50)
+task_date DATETIME
+
+-- 活跃度系统
+daily_presence_points INTEGER DEFAULT 0
+total_presence_points INTEGER DEFAULT 0
+last_active_time DATETIME
+presence_levels_claimed VARCHAR(50)
+
+-- 转盘系统
+last_wheel_date DATETIME
+wheel_spins_today INTEGER DEFAULT 0
+```
+
+**已加载模块（19个）：**
+- vip_shop, bank, vip_apply, start_menu
+- **presence** (新)
+- shop, **unified_mission** (新), announce, hall, system_cmds
+- forge, bag, checkin_bind, fun_games, **airdrop** (新)
+- me, **lucky_wheel** (新), achievement, gift
+
+### 3. 接下来该干嘛
+- 测试新功能命令
+- 监控日志确保稳定性
+
+---
