@@ -19,8 +19,8 @@ async def vip_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "   └─ 流畅观影，画质飞升~\n\n"
             "🏰 <b>皇家金库特权</b>\n"
             "   └─ 存取/转账 0 手续费\n\n"
-            "💰 <b>双倍魔力加成</b>\n"
-            "   └─ 每日签到 2x 收益\n\n"
+            "💰 <b>魔力加成</b>\n"
+            "   └─ 每日签到 1.5x 收益\n\n"
             "⚒️ <b>炼金工坊优惠</b>\n"
             "   └─ 武器锻造 5 折尊享\n\n"
             "🔮 <b>命运眷顾</b>\n"
@@ -30,10 +30,15 @@ async def vip_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📜 <b>悬赏加成</b>\n"
             "   └─ 任务奖励暴击提升\n\n"
             "⚔️ <b>决斗祝福</b>\n"
-            "   └─ 挑战时 +8% 胜率加成\n\n"
+            "   └─ 挑战时 +5% 胜率加成\n\n"
             "🏆 <b>星辰称号体系</b>\n"
-            "   └─ 三段式尊贵头衔\n"
-            "   └─ 苍穹·大魔导师·神格\n\n"
+            "   └─ 三段式尊贵头衔\n\n"
+
+            "🏦 <b>银行利息</b>\n"
+            "   └─ 日利率 1%，上限 100 MP/天\n\n"
+
+            "🛡️ <b>连败安慰</b>\n"
+            "   └─ 连败3次以上额外安慰奖励\n\n"
             "<i>「感谢您的支持，愿星光永远照耀您的魔法之旅 ~(｡•̀ᴗ-)✧」</i>"
         )
         buttons = [[InlineKeyboardButton("🔄 刷新状态", callback_data="vip")]]
@@ -46,8 +51,8 @@ async def vip_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "   └─ 画质飞跃，观影体验升级\n\n"
             "🏰 <b>皇家金库特权</b>\n"
             "   └─ 存取/转账 0 手续费\n\n"
-            "💰 <b>双倍魔力加成</b>\n"
-            "   └─ 每日签到 2x 收益\n\n"
+            "💰 <b>魔力加成</b>\n"
+            "   └─ 每日签到 1.5x 收益\n\n"
             "⚒️ <b>炼金工坊优惠</b>\n"
             "   └─ 武器锻造 5 折尊享\n\n"
             "🔮 <b>命运眷顾</b>\n"
@@ -57,10 +62,15 @@ async def vip_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📜 <b>悬赏加成</b>\n"
             "   └─ 任务奖励暴击提升\n\n"
             "⚔️ <b>决斗祝福</b>\n"
-            "   └─ 挑战时 +8% 胜率加成\n\n"
+            "   └─ 挑战时 +5% 胜率加成\n\n"
             "🏆 <b>星辰称号体系</b>\n"
-            "   └─ 三段式尊贵头衔\n"
-            "   └─ 苍穹·大魔导师·神格\n\n"
+            "   └─ 三段式尊贵头衔\n\n"
+
+            "🏦 <b>银行利息</b>\n"
+            "   └─ 日利率 1%，上限 100 MP/天\n\n"
+
+            "🛡️ <b>连败安慰</b>\n"
+            "   └─ 连败3次以上额外安慰奖励\n\n"
             "<i>「仅需一次证明材料，即可永久觉醒皇家力量喵~(｡･ω･｡)ﾉ♡」</i>"
         )
         buttons = [[InlineKeyboardButton("📝 申请觉醒", callback_data="apply_vip")]]
