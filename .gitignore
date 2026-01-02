@@ -36,3 +36,9 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.bak
+
+# 数据库备份和临时文件
+data/backups/
+data/*.db-shm
+data/*.db-wal
+data/*.bak.*

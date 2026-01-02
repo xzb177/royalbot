@@ -254,56 +254,57 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
 
     elif item_id == "box":
         # 神秘宝箱：多种稀有度掉落
-        # 稀有度: 普通60%, 稀有25%, 史诗10%, 传说4%, 神话1%
+        # 稀有度: 普通75%, 稀有18%, 史诗5%, 传说1.5%, 神话0.5%
         roll = random.random() * 100
         rarity = ""
         rewards = []
 
-        # 神话 (1%)
-        if roll < 1:
+        # 神话 (0.5%)
+        if roll < 0.5:
             rarity = "🌸 神话"
             mythic_rewards = [
-                ("MP", random.randint(1500, 3000), "💎"),
-                ("free_forge_big", 1, "⚒️"),
-                ("extra_gacha", 3, "🎰"),
+                ("MP", random.randint(2000, 5000), "💎"),
+                ("free_forge_big", 2, "⚒️"),
+                ("extra_gacha", 5, "🎰"),
             ]
             rewards = [random.choice(mythic_rewards)]
-        # 传说 (4%)
-        elif roll < 5:
+        # 传说 (1.5%)
+        elif roll < 2:
             rarity = "🌟 传说"
             legendary_rewards = [
-                ("MP", random.randint(500, 1000), "💎"),
+                ("MP", random.randint(800, 1500), "💎"),
                 ("free_forge_big", 1, "⚒️"),
-                ("extra_gacha", 2, "🎰"),
-                ("extra_tarot", 2, "🔮"),
+                ("extra_gacha", 3, "🎰"),
+                ("extra_tarot", 3, "🔮"),
             ]
             rewards = [random.choice(legendary_rewards)]
-        # 史诗 (10%)
-        elif roll < 15:
+        # 史诗 (5%)
+        elif roll < 7:
             rarity = "🟣 史诗"
             epic_rewards = [
-                ("MP", random.randint(250, 450), "💰"),
+                ("MP", random.randint(300, 600), "💰"),
                 ("lucky_boost", 1, "🍀"),
                 ("shield_active", 1, "🛡️"),
-                ("extra_gacha", 1, "🎰"),
-                ("extra_tarot", 1, "🔮"),
-                ("free_forge_small", 1, "⚒️"),
+                ("extra_gacha", 2, "🎰"),
+                ("extra_tarot", 2, "🔮"),
+                ("free_forge_big", 1, "⚒️"),
             ]
             rewards = [random.choice(epic_rewards)]
-        # 稀有 (25%)
-        elif roll < 40:
+        # 稀有 (18%)
+        elif roll < 25:
             rarity = "🔵 稀有"
             rare_rewards = [
-                ("MP", random.randint(120, 220), "💰"),
+                ("MP", random.randint(150, 300), "💰"),
                 ("extra_tarot", 1, "🔮"),
+                ("extra_gacha", 1, "🎰"),
                 ("free_forge_small", 1, "⚒️"),
             ]
             rewards = [random.choice(rare_rewards)]
-        # 普通 (60%)
+        # 普通 (75%)
         else:
             rarity = "⚪ 普通"
             common_rewards = [
-                ("MP", random.randint(50, 120), "💰"),
+                ("MP", random.randint(80, 150), "💰"),
             ]
             rewards = [random.choice(common_rewards)]
 
@@ -469,56 +470,57 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_msg = f"⚡ <b>获得 300 MP！(净赚150)</b>"
     elif item_id == "box":
         # 神秘宝箱：多种稀有度掉落
-        # 稀有度: 普通60%, 稀有25%, 史诗10%, 传说4%, 神话1%
+        # 稀有度: 普通75%, 稀有18%, 史诗5%, 传说1.5%, 神话0.5%
         roll = random.random() * 100
         rarity = ""
         rewards = []
 
-        # 神话 (1%)
-        if roll < 1:
+        # 神话 (0.5%)
+        if roll < 0.5:
             rarity = "🌸 神话"
             mythic_rewards = [
-                ("MP", random.randint(1500, 3000), "💎"),
-                ("free_forge_big", 1, "⚒️"),
-                ("extra_gacha", 3, "🎰"),
+                ("MP", random.randint(2000, 5000), "💎"),
+                ("free_forge_big", 2, "⚒️"),
+                ("extra_gacha", 5, "🎰"),
             ]
             rewards = [random.choice(mythic_rewards)]
-        # 传说 (4%)
-        elif roll < 5:
+        # 传说 (1.5%)
+        elif roll < 2:
             rarity = "🌟 传说"
             legendary_rewards = [
-                ("MP", random.randint(500, 1000), "💎"),
+                ("MP", random.randint(800, 1500), "💎"),
                 ("free_forge_big", 1, "⚒️"),
-                ("extra_gacha", 2, "🎰"),
-                ("extra_tarot", 2, "🔮"),
+                ("extra_gacha", 3, "🎰"),
+                ("extra_tarot", 3, "🔮"),
             ]
             rewards = [random.choice(legendary_rewards)]
-        # 史诗 (10%)
-        elif roll < 15:
+        # 史诗 (5%)
+        elif roll < 7:
             rarity = "🟣 史诗"
             epic_rewards = [
-                ("MP", random.randint(250, 450), "💰"),
+                ("MP", random.randint(300, 600), "💰"),
                 ("lucky_boost", 1, "🍀"),
                 ("shield_active", 1, "🛡️"),
-                ("extra_gacha", 1, "🎰"),
-                ("extra_tarot", 1, "🔮"),
-                ("free_forge_small", 1, "⚒️"),
+                ("extra_gacha", 2, "🎰"),
+                ("extra_tarot", 2, "🔮"),
+                ("free_forge_big", 1, "⚒️"),
             ]
             rewards = [random.choice(epic_rewards)]
-        # 稀有 (25%)
-        elif roll < 40:
+        # 稀有 (18%)
+        elif roll < 25:
             rarity = "🔵 稀有"
             rare_rewards = [
-                ("MP", random.randint(120, 220), "💰"),
+                ("MP", random.randint(150, 300), "💰"),
                 ("extra_tarot", 1, "🔮"),
+                ("extra_gacha", 1, "🎰"),
                 ("free_forge_small", 1, "⚒️"),
             ]
             rewards = [random.choice(rare_rewards)]
-        # 普通 (60%)
+        # 普通 (75%)
         else:
             rarity = "⚪ 普通"
             common_rewards = [
-                ("MP", random.randint(50, 120), "💰"),
+                ("MP", random.randint(80, 150), "💰"),
             ]
             rewards = [random.choice(common_rewards)]
 

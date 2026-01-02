@@ -36,18 +36,18 @@ def _generate_weapon(boost_rarity=False):
     """
     # 高稀有度模式：提升好词缀概率
     if boost_rarity:
-        # SSR/神器概率提升
+        # SSR/神器概率调整 (降低)
         roll = random.random()
-        if roll < 0.15:  # 15% 神器
+        if roll < 0.03:  # 3% 神器 (从15%降低)
             p = random.choice(["神话的", "终焉之", "创世的", "真·"])
-        elif roll < 0.40:  # 25% 传说
+        elif roll < 0.12:  # 9% 传说 (从25%降低)
             p = random.choice(["传说的", "极·"])
-        elif roll < 0.60:  # 20% 史诗
+        elif roll < 0.32:  # 20% 史诗 (保持)
             p = random.choice(["史诗的", "稀有的"])
-        elif roll < 0.95:  # 35% 普通
+        elif roll < 0.87:  # 55% 普通 (从35%提升)
             p = random.choice(["精良的", "普通的", "练习用的"])
-        else:  # 5% 咸鱼
-            p = "普通的"
+        else:  # 13% 咸鱼 (从5%提升)
+            p = random.choice(["破碎的", "生锈的"])
     else:
         p = random.choice(PREFIXES)
 
