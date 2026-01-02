@@ -14,8 +14,8 @@ import random
 # 导入活动追踪函数
 async def track_activity_wrapper(user_id: int, activity_type: str):
     """包装函数，延迟导入避免循环依赖"""
-    from plugins.mission import track_activity
-    await track_activity(user_id, activity_type)
+    from plugins.unified_mission import track_and_check_task
+    await track_and_check_task(user_id, activity_type)
 
 
 # 词缀库：决定魔法武器的稀有度和名字

@@ -270,6 +270,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             await query.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
 
+    elif data == "daily_tasks":
+        from plugins.unified_mission import mission_main
+        fake_update = type('Update', (), {
+            'effective_user': query.from_user,
+            'message': query.message,
+            'effective_chat': query.message.chat,
+        })()
+        await mission_main(fake_update, context, "daily")
+
+    elif data == "lucky_wheel":
+        from plugins.lucky_wheel import wheel_cmd
+        fake_update = type('Update', (), {
+            'effective_user': query.from_user,
+            'message': query.message,
+        })()
+        await wheel_cmd(fake_update, context)
+
     elif data == "tarot":
         from plugins.fun_games import tarot
         fake_update = type('Update', (), {
@@ -324,6 +341,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons = [
             [InlineKeyboardButton(first_button_text, callback_data=first_button_data),
              InlineKeyboardButton("🍬 每日签到", callback_data="checkin")],
+            [InlineKeyboardButton("📋 每日任务", callback_data="daily_tasks"),
+             InlineKeyboardButton("🎡 幸运转盘", callback_data="lucky_wheel")],
             [InlineKeyboardButton("🏦 皇家银行", callback_data="bank"),
              InlineKeyboardButton("🎒 次源背包", callback_data="bag")],
             [InlineKeyboardButton("🔮 命运占卜", callback_data="tarot"),
@@ -370,13 +389,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/bind</code> - 缔结魔法契约 (必做!)\n"
             "• <code>/daily</code> - 每日签到领魔力喵~\n"
             "• <code>/me</code> - 查看魔法少女档案\n\n"
+            "📋 <b>每日任务：</b>\n"
+            "• <code>/tasks</code> - 查看每日任务\n"
+            "• <code>/wheel</code> - 幸运转盘抽奖\n"
+            "• <code>/active</code> - 查看活跃度\n\n"
             "💰 <b>皇家金库：</b>\n"
             "• <code>/bank</code> - 打开魔法金库\n"
             "• <code>/deposit</code> - 存入魔力结晶\n"
             "• <code>/gift</code> - 转赠给小伙伴\n\n"
             "🔮 <b>娱乐时光：</b>\n"
             "• <code>/tarot</code> - 塔罗牌占卜 (每日一次)\n"
-            "• <code>/poster</code> - 魔法盲盒 (100MP)\n\n"
+            "• <code>/poster</code> - 魔法盲盒 (100MP)\n"
+            "• <code>/airdrop</code> - 手动触发幸运空投\n\n"
             "⚔️ <b>战斗竞技：</b>\n"
             "• <code>/duel</code> - 魔法少女决斗\n"
             "• <code>/hall</code> - 排行榜\n\n"
@@ -392,6 +416,6 @@ def register(app):
     app.add_handler(CommandHandler("start", start_menu))
     app.add_handler(CommandHandler("menu", start_menu))
     app.add_handler(CommandHandler("help", help_manual))
-    # 只处理非其他模块的回调（排除 admin_, vip_, duel_, forge_, me_, buy_, shop_ 开头的）
+    # 只处理非其他模块的回调（排除 admin_, vip_, duel_, forge_, me_, buy_, shop_, wheel_, airdrop_, mission_ 开头的）
     # 使用 group=1 让其他模块的回调（group=0）优先处理
-    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_|buy_|shop_).*$"), group=1)
+    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_|buy_|shop_|wheel_|airdrop_|mission_).*$"), group=1)

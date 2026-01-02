@@ -6,24 +6,33 @@
 """
 import random
 import uuid
+import logging
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
 from database import Session, UserBinding
 from utils import reply_with_auto_delete
 
+logger = logging.getLogger(__name__)
+
 
 # 导入活动追踪函数
 async def track_activity_wrapper(user_id: int, activity_type: str):
     """包装函数，延迟导入避免循环依赖"""
-    from plugins.mission import track_activity
-    await track_activity(user_id, activity_type)
+    from plugins.unified_mission import track_and_check_task
+    await track_and_check_task(user_id, activity_type)
 
 
 async def check_duel_bounty_progress(update: Update, context: ContextTypes.DEFAULT_TYPE, winner_id: int):
     """检查决斗悬赏任务进度"""
-    from plugins.mission import check_bounty_progress
-    await check_bounty_progress(update, context, "duel")
+    from plugins.unified_mission import check_bounty_progress
+    # 创建假的 update 对象
+    fake_update = type('Update', (), {
+        'effective_user': type('User', (), {'id': winner_id})(),
+        'message': type('Message', (), {'chat': type('Chat', (), {'id': update.effective_chat.id})()})(),
+        'effective_chat': type('Chat', (), {'id': update.effective_chat.id})(),
+    })()
+    await check_bounty_progress(fake_update, context, "duel")
 
 # ==========================================
 # 🔮 玩法一：命运塔罗牌 (每日运势)
@@ -327,6 +336,7 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(msg, txt)
     except Exception as e:
         session.rollback()
+        logger.error(f"抽卡失败 - 用户ID: {user_id}, 错误: {e}", exc_info=True)
         await reply_with_auto_delete(msg, f"⚠️ <b>抽卡失败</b>\n\n<i>\"魔法阵出错了...请稍后再试喵！\"</i>")
     finally:
         session.close()

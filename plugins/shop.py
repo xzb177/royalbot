@@ -435,14 +435,14 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<i>\"感谢惠顾！期待您的下次光临喵~(｡•̀ᴗ-)✧\"</i>"
     )
 
-    buttons = [[InlineKeyboardButton("🔙 返回商店", callback_data="shop_back")]]
+    buttons = [[InlineKeyboardButton("🔙 返回商店", callback_data="shop_home")]]
     try:
         await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
     except Exception:
         await query.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
 
 
-async def shop_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def shop_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """返回商店主页"""
     query = update.callback_query
     await query.answer()
@@ -517,4 +517,4 @@ def register(app):
     app.add_handler(CommandHandler("store", shop_main))
     app.add_handler(CommandHandler("buy", buy_item))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern=r"^buy_"))
-    app.add_handler(CallbackQueryHandler(shop_back_callback, pattern=r"^shop_back$"))
+    app.add_handler(CallbackQueryHandler(shop_home_callback, pattern=r"^shop_home$"))

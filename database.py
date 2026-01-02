@@ -50,6 +50,18 @@ class UserBinding(Base):
     # === 商店限购字段 ===
     last_box_buy_date = Column(DateTime)             # 上次购买神秘宝箱日期
     daily_box_buy_count = Column(Integer, default=0) # 今日购买神秘宝箱次数
+    # === 每日任务系统 ===
+    task_date = Column(DateTime)                     # 任务刷新日期
+    daily_tasks = Column(Text, default="")           # 今日任务列表
+    task_progress = Column(Text, default="0,0,0")    # 任务进度
+    # === 幸运转盘系统 ===
+    last_wheel_date = Column(DateTime)               # 上次转转盘日期
+    wheel_spins_today = Column(Integer, default=0)   # 今日已转次数
+    # === 在线活跃度系统 ===
+    daily_presence_points = Column(Integer, default=0)   # 今日活跃点数
+    total_presence_points = Column(Integer, default=0)   # 累计活跃点数
+    last_active_time = Column(DateTime)              # 上次活跃时间（复用last_chat_time也可以）
+    presence_levels_claimed = Column(Text, default="")  # 已领取的活跃等级
 
 class VIPApplication(Base):
     __tablename__ = 'vip_applications'
