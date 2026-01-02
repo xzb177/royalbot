@@ -50,7 +50,7 @@ SHOP_ITEMS = {
     },
     "energy": {
         "name": "⚡ 能量药水",
-        "desc": "恢复200MP(直接获得)",
+        "desc": "恢复300MP(净赚150)",
         "price": 150,
         "vip_price": 75,
         "emoji": "⚡"
@@ -64,7 +64,7 @@ SHOP_ITEMS = {
     },
     "box": {
         "name": "🎁 神秘宝箱",
-        "desc": "随机开出50-500MP",
+        "desc": "随机开出100-300MP",
         "price": 100,
         "vip_price": 50,
         "emoji": "🎁"
@@ -186,14 +186,14 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
     # 处理商品效果
     result_msg = ""
     if item_id == "energy":
-        # 能量药水：直接获得MP
-        gain = 200
+        # 能量药水：直接获得300MP (从200提升)
+        gain = 300
         u.points += gain
-        result_msg = f"⚡ <b>获得 200 MP！</b>"
+        result_msg = f"⚡ <b>获得 300 MP！(净赚150)</b>"
 
     elif item_id == "box":
-        # 神秘宝箱：随机开出MP
-        gain = random.randint(50, 500)
+        # 神秘宝箱：随机开出100-300MP (从50-500调整，期望200)
+        gain = random.randint(100, 300)
         u.points += gain
         result_msg = f"🎁 <b>宝箱开出 {gain} MP！</b>"
 
@@ -290,11 +290,11 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 处理商品效果
     result_msg = ""
     if item_id == "energy":
-        gain = 200
+        gain = 300
         u.points += gain
-        result_msg = f"⚡ <b>获得 200 MP！</b>"
+        result_msg = f"⚡ <b>获得 300 MP！(净赚150)</b>"
     elif item_id == "box":
-        gain = random.randint(50, 500)
+        gain = random.randint(100, 300)
         u.points += gain
         result_msg = f"🎁 <b>宝箱开出 {gain} MP！</b>"
     elif item_id == "lucky":

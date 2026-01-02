@@ -1,7 +1,8 @@
 """
 签到绑定系统 - 魔法少女版
 - 每日签到领取魔力
-- VIP用户双倍收益
+- VIP用户1.5倍收益
+- 成就系统
 - 缔结魔法契约
 """
 from telegram import Update
@@ -10,6 +11,15 @@ from database import Session, UserBinding, create_or_update_user
 from datetime import datetime, timedelta
 from utils import reply_with_auto_delete
 import random
+
+
+def check_achievement(user, user_id=None):
+    """检查成就（导入achievement模块）"""
+    try:
+        from plugins.achievement import check_and_award_achievement
+        return check_and_award_achievement(user, user_id)
+    except ImportError:
+        return None
 
 
 async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -50,21 +60,53 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    # 签到奖励
-    base_points = random.randint(10, 30)
+    # 签到奖励 (平衡调整后 2026-01-02)
+    # 基础奖励：15-25 MP (从10-30调整，降低上限)
+    base_points = random.randint(15, 25)
     user.last_checkin = now
 
-    # 幸运草效果：暴击率+50%
+    # 计算连续签到
+    yesterday = now - timedelta(days=1)
+    if user.last_checkin_date:
+        last_date = user.last_checkin_date.replace(tzinfo=None)
+        if last_date >= yesterday.replace(hour=0, minute=0, second=0):
+            # 昨天签到了，连续+1
+            user.consecutive_checkin = (user.consecutive_checkin or 0) + 1
+        else:
+            # 中断了，重置
+            user.consecutive_checkin = 1
+    else:
+        user.consecutive_checkin = 1
+    user.last_checkin_date = now
+    user.total_checkin_days = (user.total_checkin_days or 0) + 1
+
+    # 幸运草效果：暴击率30% (从50%降低)
     lucky_crit = False
     lucky_bonus = 0
     if user.lucky_boost:
-        if random.random() < 0.5:  # 50% 暴击率
+        if random.random() < 0.3:  # 30% 暴击率
             lucky_bonus = base_points  # 暴击 = 额外获得基础值
             lucky_crit = True
         user.lucky_boost = False  # 消耗幸运草
 
+    # 检查签到成就
+    achievement_msg = ""
+    if user.consecutive_checkin >= 7:
+        result = check_achievement(user, "checkin_7")
+        if result and result.get("new"):
+            achievement_msg = f"\n🎉 <b>成就解锁：{result['name']}</b>\n获得 {result['reward']} MP！"
+    if user.consecutive_checkin >= 30:
+        result = check_achievement(user, "checkin_30")
+        if result and result.get("new"):
+            achievement_msg += f"\n🎉 <b>成就解锁：{result['name']}</b>\n获得 {result['reward']} MP + 称号「{result['title']}」！"
+    if user.total_checkin_days >= 100:
+        result = check_achievement(user, "checkin_100")
+        if result and result.get("new"):
+            achievement_msg += f"\n🎉 <b>成就解锁：{result['name']}</b>\n获得 {result['reward']} MP + 称号「{result['title']}」！"
+
     if user.is_vip:
-        base_points *= 2
+        # VIP加成：×1.5 (从×2降低)
+        base_points = int(base_points * 1.5)
         total_points = base_points + lucky_bonus
         user.points += total_points
 
@@ -73,6 +115,7 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🍬 <b>【 皇 家 · 每 日 补 给 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"👑 <b>Welcome back, Master~</b>\n"
+            f"📅 <b>连续签到：</b> {user.consecutive_checkin} 天 | 累计 {user.total_checkin_days} 天\n"
         )
         if lucky_crit:
             text += (
@@ -84,11 +127,12 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             text += (
-                f"感谢您对星辰的眷顾，这是今日的双倍馈赠喵~\n\n"
+                f"感谢您对星辰的眷顾，这是今日的1.5倍馈赠喵~\n\n"
                 f"💎 <b>获得魔力：</b> <b>+{base_points}</b> MP\n"
             )
         text += (
             f"💰 <b>当前余额：</b> {user.points} MP\n"
+            f"{achievement_msg}"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"<i>\"明天见哦，亲爱的Master...(｡･ω･｡)ﾉ♡\"</i>"
         )
@@ -101,6 +145,7 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🍬 <b>【 魔 法 学 院 · 每 日 补 给 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"✨ <b>签到成功喵~</b>\n"
+            f"📅 <b>连续签到：</b> {user.consecutive_checkin} 天 | 累计 {user.total_checkin_days} 天\n"
         )
         if lucky_crit:
             text += (
@@ -117,8 +162,9 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         text += (
             f"💰 <b>当前余额：</b> {user.points} MP\n"
+            f"{achievement_msg}"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"<i>💡 VIP 可享 <b>双倍</b> 魔力加成哦！</i>\n"
+            f"<i>💡 VIP 可享 <b>1.5倍</b> 魔力加成哦！</i>\n"
             f"<i>\"成为VIP，星辰将永远眷顾你喵~(≧◡≦)\"</i>"
         )
 

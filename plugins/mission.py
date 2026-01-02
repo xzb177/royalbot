@@ -26,20 +26,20 @@ import random
 CURRENT_BOUNTY = {}
 
 # ==========================================
-# 💰 聊天挖矿配置
+# 💰 聊天挖矿配置 (平衡调整后 2026-01-02)
 # ==========================================
-# 基础掉落率 (15%)
-DROP_RATE = 15
-# 连击加成: 每连续聊天+5%
-COMBO_BONUS = 5
-# 最大连击倍数
-MAX_COMBO_MULTIPLIER = 3
+# 基础掉落率 (从15%降至10%，控制通胀)
+DROP_RATE = 10
+# 连击加成: 每连续聊天+3% (从5%降低)
+COMBO_BONUS = 3
+# 最大连击倍数 (从×3降至×2)
+MAX_COMBO_MULTIPLIER = 2
 # 连击判定时间(秒)
 COMBO_TIMEOUT = 60
-# 活跃时段加成 (20:00-23:59)
-PRIME_TIME_BONUS = 0.5
-# 稀有掉落率 (1%)
-RARE_DROP_RATE = 1
+# 活跃时段加成 (20:00-23:59，从50%降至30%)
+PRIME_TIME_BONUS = 0.3
+# 稀有掉落率 (从1%降至0.5%)
+RARE_DROP_RATE = 0.5
 
 # 时段配置
 PRIME_TIME_START = 20
@@ -192,8 +192,8 @@ async def passive_chat_reward(update: Update, context: ContextTypes.DEFAULT_TYPE
     reward_breakdown = []
 
     if did_drop or is_rare or keyword_bonus > 0:
-        # 基础奖励
-        base = random.randint(3, 8) if u.is_vip else random.randint(1, 3)
+        # 基础奖励 (VIP从3-8降至2-4)
+        base = random.randint(2, 4) if u.is_vip else random.randint(1, 2)
 
         # 连击加成
         if u.chat_combo >= 5:
@@ -206,9 +206,9 @@ async def passive_chat_reward(update: Update, context: ContextTypes.DEFAULT_TYPE
             time_extra = int(base * PRIME_TIME_BONUS)
             reward_breakdown.append(f"深夜+{time_extra}")
 
-        # 稀有暴击
+        # 稀有暴击 (从20-50降至15-30)
         if is_rare:
-            rare_bonus = random.randint(20, 50)
+            rare_bonus = random.randint(15, 30)
             base += rare_bonus
             reward_breakdown.append(f"稀有暴击+{rare_bonus}")
 

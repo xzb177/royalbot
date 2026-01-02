@@ -130,11 +130,11 @@ async def tarot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
-# 🎰 玩法二：魔法盲盒 (魔力回收器)
+# 🎰 玩法二：魔法盲盒 (魔力回收器) - 平衡调整后 2026-01-02
 # ==========================================
 GACHA_ITEMS = {
-    "UR": {  # Ultra Rare - 5% 概率
-        "rate": 5,
+    "UR": {  # Ultra Rare - 6% 概率 (从5%提升)
+        "rate": 6,
         "emoji": "🌈",
         "name": "UR (Ultra Rare)",
         "items": [
@@ -142,10 +142,10 @@ GACHA_ITEMS = {
             "[传说] 星灵契约书",
             "[限定] 看板娘亲手做的小饼干"
         ],
-        "bonus": 500  # 返利
+        "bonus": 200  # 返利 (从500降至200)
     },
-    "SSR": {  # Super Super Rare - 10% 概率
-        "rate": 10,
+    "SSR": {  # Super Super Rare - 12% 概率 (从10%提升)
+        "rate": 12,
         "emoji": "🟡",
         "name": "SSR (Super Super Rare)",
         "items": [
@@ -153,10 +153,10 @@ GACHA_ITEMS = {
             "魔法少女剧场版合集",
             "声优签名卡"
         ],
-        "bonus": 100
+        "bonus": 50  # 返利 (从100降至50)
     },
-    "SR": {  # Super Rare - 20% 概率
-        "rate": 20,
+    "SR": {  # Super Rare - 25% 概率 (从20%提升)
+        "rate": 25,
         "emoji": "🟣",
         "name": "SR (Super Rare)",
         "items": [
@@ -166,8 +166,8 @@ GACHA_ITEMS = {
         ],
         "bonus": 0
     },
-    "R": {  # Rare - 35% 概率
-        "rate": 35,
+    "R": {  # Rare - 32% 概率 (从35%降低)
+        "rate": 32,
         "emoji": "🔵",
         "name": "R (Rare)",
         "items": [
@@ -177,8 +177,8 @@ GACHA_ITEMS = {
         ],
         "bonus": 0
     },
-    "N": {  # Normal - 30% 概率
-        "rate": 30,
+    "N": {  # Normal - 25% 概率 (从30%降低)
+        "rate": 25,
         "emoji": "⚪",
         "name": "N (Normal)",
         "items": [
@@ -230,16 +230,40 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             u.points -= price
 
-        # 抽奖逻辑
-        roll = random.randint(1, 100)
-        cumulative = 0
-        selected_rank = "N"
+        # 抽奖逻辑 (含保底机制)
+        pity_count = u.gacha_pity_counter or 0
+        pity_triggered = pity_count >= 10  # 10抽保底
 
-        for rank, data in GACHA_ITEMS.items():
-            cumulative += data["rate"]
-            if roll <= cumulative:
-                selected_rank = rank
-                break
+        if pity_triggered:
+            # 保底触发：必定SR或以上
+            roll = random.randint(1, 100)
+            if roll <= 25:  # SR概率
+                selected_rank = "SR"
+            elif roll <= 37:  # SSR概率 (25+12)
+                selected_rank = "SSR"
+            else:  # UR概率
+                selected_rank = "UR"
+            u.gacha_pity_counter = 0  # 重置保底
+            pity_used = True
+        else:
+            # 正常抽卡
+            roll = random.randint(1, 100)
+            cumulative = 0
+            selected_rank = "N"
+
+            for rank, data in GACHA_ITEMS.items():
+                cumulative += data["rate"]
+                if roll <= cumulative:
+                    selected_rank = rank
+                    break
+
+            # 保底计数逻辑：没出SR+就+1
+            if selected_rank in ["N", "R"]:
+                u.gacha_pity_counter = pity_count + 1
+                pity_used = False
+            else:
+                u.gacha_pity_counter = 0  # 出了SR+，重置
+                pity_used = False
 
         rank_data = GACHA_ITEMS[selected_rank]
         item = random.choice(rank_data["items"])
@@ -277,6 +301,15 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             desc = "emmm...下次会更好的喵！"
 
+        # 保底提示
+        pity_counter = u.gacha_pity_counter or 0
+        if pity_used:
+            pity_text = f"\n🎟️ <b>保底触发！</b> 保底计数已重置"
+        elif pity_counter > 0:
+            pity_text = f"\n📊 保底进度: {pity_counter}/10 (再抽{10-pity_counter}次必出SR+)"
+        else:
+            pity_text = ""
+
         txt = (
             f"🎰 <b>【 命 运 · 盲 盒 机 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
@@ -288,6 +321,7 @@ async def gacha_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏆 品级：{rank_data['emoji']} <b>{rank_data['name']}</b>\n"
             f"🎁 获得：<b>{item}</b>\n"
             f"📦 <i>物品已存入背包！使用 /bag 查看</i>\n"
+            f"{pity_text}\n"
             f"💬 看板娘：<i>\"{desc}\"</i>"
         )
         await reply_with_auto_delete(msg, txt)
@@ -567,21 +601,21 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session.close()
                 return
 
-            # ===== 增强决斗系统：基于战力的战斗计算 =====
+            # ===== 增强决斗系统：基于战力的战斗计算 (平衡调整后 2026-01-02) =====
             cha_attack = u_cha.attack if u_cha.attack is not None else 10
             opp_attack = u_opp.attack if u_opp.attack is not None else 10
 
             # 计算基础胜率（基于战力差距，使用sigmoid函数平滑）
+            # 调整后：3000点差距=25%胜率差（从2000点=30%调整）
             attack_diff = cha_attack - opp_attack
-            # 每100点战力差距约影响5%胜率，上限+/-30%
-            attack_bonus = max(-0.3, min(0.3, attack_diff / 2000))
+            attack_bonus = max(-0.25, min(0.25, attack_diff / 3000))
 
-            # VIP 加成
+            # VIP 加成（缩小差距：从±13%降到±8%）
             vip_bonus = 0.0
             if u_cha.is_vip:
-                vip_bonus += 0.08  # 挑战者VIP +8%
+                vip_bonus += 0.05  # 挑战者VIP +5%（从8%降低）
             if u_opp.is_vip:
-                vip_bonus -= 0.05  # 应战者VIP -5%（防守优势）
+                vip_bonus -= 0.03  # 应战者VIP -3%（从5%降低，即+3%自己）
 
             # 武器加成（稀有度额外加成）
             cha_weapon_bonus = get_weapon_rarity_bonus(u_cha.weapon)
@@ -612,15 +646,29 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 资金转移
             winner.points += bet
             winner.win += 1
+            winner.lose_streak = 0  # 重置连败
+
+            # 连败安慰机制
+            lose_streak = (loser.lose_streak or 0) + 1
+            loser.lose_streak = lose_streak
+            loser.lost += 1
+
+            # 败者安慰奖（赌注的10%，上限20）
+            consolation = min(bet // 10, 20)
+            consolation_extra = 30 if lose_streak >= 3 else 0  # 连败3次以上额外安慰
+            total_consolation = consolation + consolation_extra
 
             # 检查防御卷轴效果（失败不掉钱）
             shield_protected = False
             if loser.shield_active:
                 shield_protected = True
                 loser.shield_active = False  # 消耗防御卷轴
+                # 防御卷轴：不扣赌注，但获得安慰奖
+                loser.points += total_consolation
             else:
+                # 无防御卷轴：扣除赌注，但返还安慰奖
                 loser.points -= bet
-            loser.lost += 1
+                loser.points += total_consolation
 
             # 胜者可能获得战力提升（小概率）
             power_up = 0
@@ -635,11 +683,24 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             power_up_text = f"\n⬆️ <b>{win_name}</b> 战力 +{power_up}！战斗经验提升了喵！" if power_up else ""
 
+            # 败者安慰奖文本
+            if total_consolation > 0:
+                if consolation_extra > 0:
+                    consolation_text = f"💝 <b>败者安慰：</b> {lose_name} 获得 {total_consolation} MP (连败{lose_streak}次额外+30)"
+                else:
+                    consolation_text = f"💝 <b>败者安慰：</b> {lose_name} 获得 {total_consolation} MP"
+            else:
+                consolation_text = ""
+
             # 防御卷轴效果文本
             if shield_protected:
                 lose_text = f"🛡️ <b>败者：</b> {lose_name} 的防御卷轴生效了！没有损失 MP！"
+                if total_consolation > 0:
+                    lose_text += f"\n{consolation_text}"
             else:
                 lose_text = f"💀 <b>败者：</b> {lose_name} 失去 {bet} MP"
+                if total_consolation > 0:
+                    lose_text += f"\n{consolation_text}"
 
             await query.edit_message_text(
                 f"⚔️ <b>【 决 斗 结 束 】</b>\n"

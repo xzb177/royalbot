@@ -1,12 +1,46 @@
 """
 皇家银行系统 - 魔法少女版
-- VIP用户：皇家魔法少女金库（0手续费）
-- 普通用户：魔法学院储蓄柜台（5%手续费）
+- VIP用户：皇家魔法少女金库（0手续费 + 1%/天利息）
+- 普通用户：魔法学院储蓄柜台（5%手续费 + 0.5%/天利息）
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import Session, UserBinding
 from utils import reply_with_auto_delete
+from datetime import datetime, timedelta
+
+
+# 利息配置
+INTEREST_RATE_VIP = 0.01      # VIP日利率 1%
+INTEREST_RATE_NORMAL = 0.005  # 普通用户日利率 0.5%
+MAX_INTEREST_VIP = 100        # VIP每日利息上限
+MAX_INTEREST_NORMAL = 50      # 普通用户每日利息上限
+
+
+def calculate_interest(user: UserBinding, days: int = None) -> int:
+    """计算利息收益"""
+    if user.bank_points <= 0:
+        return 0
+
+    if days is None:
+        # 计算从上次结算到现在经过的天数
+        if user.last_interest_claimed:
+            days = (datetime.now() - user.last_interest_claimed.replace(tzinfo=None)).days
+        else:
+            days = 0
+
+    if days <= 0:
+        return 0
+
+    # 计算基础利息
+    rate = INTEREST_RATE_VIP if user.is_vip else INTEREST_RATE_NORMAL
+    max_daily = MAX_INTEREST_VIP if user.is_vip else MAX_INTEREST_NORMAL
+
+    # 每天利息 = min(存款 × 利率, 上限)
+    daily_interest = min(int(user.bank_points * rate), max_daily)
+    total_interest = daily_interest * days
+
+    return total_interest
 
 
 async def bank_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -27,6 +61,11 @@ async def bank_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = user.points + user.bank_points
     vip_badge = " 👑" if user.is_vip else ""
 
+    # 计算累积利息
+    accumulated = user.accumulated_interest or 0
+    pending_interest = calculate_interest(user)
+
+    # VIP和普通用户的不同界面
     if user.is_vip:
         text = (
             f"🏰 <b>【 皇 家 · 魔 法 少 女 金 库 】</b>\n"
@@ -39,9 +78,11 @@ async def bank_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━\n"
             f"👛 <b>流动钱包：</b> {user.points} MP\n"
             f"🔐 <b>永恒金库：</b> {user.bank_points} MP\n"
+            f"💰 <b>待领取利息：</b> {accumulated + pending_interest} MP\n"
+            f"📈 <b>日利率：</b> 1% (上限100/天)\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"<i>💡 VIP 特权：存取/转账 <b>0 手续费</b> 喵~</i>\n"
-            f"<i>\"要取一点魔力去买魔法道具吗？Master想做什么都可以哦~(｡•̀ᴗ-)✧\"</i>"
+            f"<i>💡 VIP 特权：存取/转账 <b>0 手续费</b> + <b>银行利息</b> 喵~</i>\n"
+            f"<i>\"取款时会自动结算利息哦，Master~(｡•̀ᴗ-)✧\"</i>"
         )
     else:
         text = (
@@ -55,9 +96,11 @@ async def bank_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━\n"
             f"👛 <b>口袋零钱：</b> {user.points} MP\n"
             f"🏦 <b>学院存款：</b> {user.bank_points} MP\n"
+            f"💰 <b>待领取利息：</b> {accumulated + pending_interest} MP\n"
+            f"📈 <b>日利率：</b> 0.5% (上限50/天)\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"<i>⚠️ 见习魔法少女提现/转账需收 <b>5%</b> 手续费哦!</i>\n"
-            f"<i>\"想免除手续费吗？觉醒成为 <b>VIP</b> 就可以享受皇家待遇啦！(≧◡≦)\"</i>"
+            f"<i>⚠️ 提现/转账需收 <b>5%</b> 手续费哦!</i>\n"
+            f"<i>\"取款时会自动结算利息。想免除手续费吗？觉醒成为 <b>VIP</b> 吧！(≧◡≦)\"</i>"
         )
 
     buttons = [
@@ -107,7 +150,7 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """取出魔力"""
+    """取出魔力（自动结算利息）"""
     msg = update.effective_message
     if not msg:
         return
@@ -129,11 +172,22 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
         return
 
+    # 计算并结算利息
+    interest = calculate_interest(u)
+    accumulated = u.accumulated_interest or 0
+    total_interest = interest + accumulated
+
+    # 更新利息结算时间
+    u.last_interest_claimed = datetime.now()
+    u.accumulated_interest = 0
+
     fee = 0 if u.is_vip else int(amount * 0.05)
     actual = amount - fee
     u.bank_points -= amount
-    u.points += actual
+    u.points += actual + total_interest  # 取款金额 + 利息
     session.commit()
+
+    interest_text = f"\n💰 <b>利息收入：</b> +{total_interest} MP" if total_interest > 0 else ""
 
     if u.is_vip:
         await reply_with_auto_delete(
@@ -142,7 +196,8 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━\n"
             f"💰 取出：{amount} MP\n"
             f"👑 <b>VIP免手续费</b>\n"
-            f"💵 实际到账：<b>{actual} MP</b>"
+            f"{interest_text}"
+            f"💵 实际到账：<b>{actual + total_interest} MP</b>"
         )
     else:
         await reply_with_auto_delete(
@@ -151,7 +206,8 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━\n"
             f"💰 取出：{amount} MP\n"
             f"💸 手续费：{fee} MP (5%)\n"
-            f"💵 实际到账：<b>{actual} MP</b>"
+            f"{interest_text}"
+            f"💵 实际到账：<b>{actual + total_interest} MP</b>"
         )
     session.close()
 
@@ -192,11 +248,22 @@ async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.close()
             return
 
+        # 计算并结算利息
+        interest = calculate_interest(u)
+        accumulated = u.accumulated_interest or 0
+        total_interest = interest + accumulated
+
+        # 更新利息结算时间
+        u.last_interest_claimed = datetime.now()
+        u.accumulated_interest = 0
+
         fee = 0 if u.is_vip else int(amount * 0.05)
         actual = amount - fee
         u.bank_points = 0
-        u.points += actual
+        u.points += actual + total_interest
         session.commit()
+
+        interest_text = f"\n💰 <b>利息收入：</b> +{total_interest} MP" if total_interest > 0 else ""
 
         if u.is_vip:
             await query.edit_message_text(
@@ -204,7 +271,8 @@ async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"💰 已取出：{amount} MP\n"
                 f"👑 <b>VIP免手续费</b>\n"
-                f"💵 实际到账：<b>{actual} MP</b>"
+                f"{interest_text}"
+                f"💵 实际到账：<b>{actual + total_interest} MP</b>"
             )
         else:
             await query.edit_message_text(
@@ -212,7 +280,8 @@ async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"💰 已取出：{amount} MP\n"
                 f"💸 手续费：{fee} MP (5%)\n"
-                f"💵 实际到账：<b>{actual} MP</b>"
+                f"{interest_text}"
+                f"💵 实际到账：<b>{actual + total_interest} MP</b>"
             )
 
     session.close()

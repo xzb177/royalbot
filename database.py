@@ -15,6 +15,9 @@ class UserBinding(Base):
     lost = Column(Integer, default=0)    # 负场
     points = Column(Integer, default=0)       # 流动魔力 (钱包)
     bank_points = Column(Integer, default=0)  # 库藏魔力 (银行)
+    # === 银行利息系统 ===
+    last_interest_claimed = Column(DateTime)    # 上次结算利息时间
+    accumulated_interest = Column(Integer, default=0)  # 累计未领取利息
     weapon = Column(String, default=None)     # 装备武器
     attack = Column(Integer, default=0)       # 战力数值
     intimacy = Column(Integer, default=0)     # 好感度
@@ -36,6 +39,14 @@ class UserBinding(Base):
     extra_gacha = Column(Integer, default=0)          # 额外盲盒次数
     free_forges = Column(Integer, default=0)          # 免费锻造券
     free_forges_big = Column(Integer, default=0)      # 高级锻造券（稀有度UP）
+    # === 保底系统 ===
+    gacha_pity_counter = Column(Integer, default=0)   # 盲盒保底计数（连续未出SR+次数）
+    lose_streak = Column(Integer, default=0)          # 连败计数（用于安慰机制）
+    # === 成就系统 ===
+    achievements = Column(Text, default="")          # 已完成成就列表（逗号分隔）
+    total_checkin_days = Column(Integer, default=0)  # 累计签到天数
+    consecutive_checkin = Column(Integer, default=0) # 连续签到天数
+    last_checkin_date = Column(DateTime)             # 上次签到日期（用于连续签到计算）
 
 class VIPApplication(Base):
     __tablename__ = 'vip_applications'
