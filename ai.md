@@ -1408,6 +1408,32 @@ await query.edit_message_text("⏰ <b>决斗已超时喵！</b>...", parse_mode=
 - 机器人已重启（PID: 1844390）
 - 测试 `/announce` 命令功能
 
+### 4. Git 提交
+- **提交 ID**: `b7f1317`
+- **仓库**: `git@github.com:xzb177/royalbot.git`
+
+### 5. 数据备份
+- **备份文件**: `/root/royalbot/data/magic.db.bak.20260102`
+- **备份日期**: 2026-01-02
+- **备份大小**: 40 KB
+
+### 6. 自动备份系统
+- **备份脚本**: `/root/royalbot/backup.sh`
+- **备份时间**: 每天凌晨 2:00
+- **发送方式**: 通过 Telegram Bot 发送压缩后的数据库给管理员
+- **本地保留**: 最近 5 个备份文件
+- **日志文件**: `/root/royalbot/data/backups/backup.log`
+
+**手动备份命令：**
+```bash
+/root/royalbot/backup.sh
+```
+
+**查看备份文件：**
+```bash
+ls -lh /root/royalbot/data/backups/
+```
+
 ---
 
 ## 2026-01-02 修复商店购买按钮 + 神秘宝箱限购功能
