@@ -152,8 +152,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from plugins.me import me_panel
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
+            'effective_message': query.message,
             'message': query.message,
-            'effective_chat': query.message.chat
+            'callback_query': query,
         })()
         await me_panel(fake_update, context)
 
@@ -163,6 +164,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
         })()
         await checkin(fake_update, context)
 
@@ -172,6 +174,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
         })()
         await bank_panel(fake_update, context)
 
@@ -181,6 +184,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
         })()
         await shop_main(fake_update, context)
 
@@ -190,15 +194,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
         })()
         await my_bag(fake_update, context)
 
     # 排行榜
-    elif data == "hall":
+    if data == "hall":
         from plugins.hall import hall_leaderboard
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,  # 添加这个属性
         })()
         await hall_leaderboard(fake_update, context)
 
@@ -207,7 +213,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from plugins.presence import presence_cmd
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
-            'effective_message': query.message,
+            'message': query.message,
+            'effective_message': query.message,  # 添加这个属性
         })()
         await presence_cmd(fake_update, context)
 
@@ -217,6 +224,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'callback_query': query,
+            'effective_message': query.message,
         })()
         await forge_callback(fake_update, context)
 
@@ -226,6 +234,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
             'effective_chat': query.message.chat,
         })()
         await mission_main(fake_update, context, "daily")
@@ -236,6 +245,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
         })()
         await wheel_cmd(fake_update, context)
 
@@ -245,6 +255,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
         })()
         await tarot(fake_update, context)
 
@@ -254,6 +265,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = type('Update', (), {
             'effective_user': query.from_user,
             'message': query.message,
+            'effective_message': query.message,
         })()
         await gacha_poster(fake_update, context)
 
@@ -427,5 +439,7 @@ def register(app):
     app.add_handler(CommandHandler("start", start_menu))
     app.add_handler(CommandHandler("menu", start_menu))
     app.add_handler(CommandHandler("help", help_manual))
-    # 只处理非其他模块的回调
-    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_|buy_|shop_|wheel_|airdrop_|mission_).*$"), group=1)
+    # 只处理其他模块未匹配的回调
+    # 排除: admin_(管理员), vip_(VIP审核), duel_(决斗), forge_(锻造操作), me_(个人档案操作)
+    #       buy_(购买), shop_home_(商店首页), wheel_(转盘), airdrop_(空投), mission_(悬赏任务)
+    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_accept|duel_reject|forge_again|me_|buy_|shop_home|wheel_spin|wheel_back|airdrop_open|mission_|mission_tab_).*$"), group=1)
