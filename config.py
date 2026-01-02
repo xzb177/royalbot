@@ -26,8 +26,8 @@ _load_dotenv(Path(__file__).parent / ".env")
 class Config:
     # Telegram
     BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-    OWNER_ID = int(os.getenv("OWNER_ID", 5779291957))
-    GROUP_ID = int(os.getenv("GROUP_ID", -1002306960410))
+    OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+    GROUP_ID = int(os.getenv("GROUP_ID", "0"))
 
     # 消息自毁配置（秒），设为 0 则不删除
     MESSAGE_DELETE_DELAY = int(os.getenv("MESSAGE_DELETE_DELAY", 30))
