@@ -392,6 +392,6 @@ def register(app):
     app.add_handler(CommandHandler("start", start_menu))
     app.add_handler(CommandHandler("menu", start_menu))
     app.add_handler(CommandHandler("help", help_manual))
-    # 只处理非其他模块的回调（排除 admin_, vip_, duel_, forge_, me_ 开头的）
+    # 只处理非其他模块的回调（排除 admin_, vip_, duel_, forge_, me_, buy_, shop_ 开头的）
     # 使用 group=1 让其他模块的回调（group=0）优先处理
-    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_).*$"), group=1)
+    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_|buy_|shop_).*$"), group=1)

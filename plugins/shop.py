@@ -3,12 +3,37 @@
 - 购买各种道具和增益效果
 - VIP 用户享受折扣优惠
 - 支持参数购买和按钮购买
+- 部分商品每日限购
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import Session, UserBinding
 from utils import reply_with_auto_delete
+from datetime import datetime, date
 import random
+
+
+# 辅助函数：获取今日日期（用于每日限购重置）
+def get_today():
+    """获取今日日期，用于每日重置判断"""
+    return datetime.now().date()
+
+
+def get_box_limit_status(user: UserBinding) -> tuple:
+    """
+    获取用户神秘宝箱限购状态
+    返回：(今日已购买次数, 今日剩余次数, 是否需要重置)
+    """
+    today = get_today()
+    need_reset = False
+
+    # 检查是否需要重置（跨天）
+    if user.last_box_buy_date:
+        last_date = user.last_box_buy_date.date() if isinstance(user.last_box_buy_date, datetime) else user.last_box_buy_date
+        if last_date < today:
+            need_reset = True
+
+    return user.daily_box_buy_count or 0, need_reset
 
 
 # 商店商品配置
@@ -67,7 +92,8 @@ SHOP_ITEMS = {
         "desc": "随机开出100-300MP",
         "price": 100,
         "vip_price": 50,
-        "emoji": "🎁"
+        "emoji": "🎁",
+        "daily_limit": 5  # 每日限购5次（普通用户3次，VIP5次）
     },
 }
 
@@ -110,7 +136,21 @@ async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     shop_list = ""
     for item_id, item in SHOP_ITEMS.items():
         price = item["vip_price"] if u.is_vip else item["price"]
-        shop_list += f"{item['emoji']} <b>{item['name']}</b> — <b>{price} MP</b>\n"
+        line = f"{item['emoji']} <b>{item['name']}</b> — <b>{price} MP</b>"
+
+        # 神秘宝箱显示限购信息
+        if item_id == "box":
+            bought_count, need_reset = get_box_limit_status(u)
+            if need_reset:
+                bought_count = 0
+            limit = 5 if u.is_vip else 3
+            remaining = max(0, limit - bought_count)
+            if remaining > 0:
+                line += f" <i>(今日可购 {remaining}/{limit})</i>"
+            else:
+                line += f" <i>(今日已达上限)</i>"
+
+        shop_list += line + "\n"
 
     txt += f"\n📦 <b>今日商品：</b>\n{shop_list}"
     txt += "\n━━━━━━━━━━━━━━━━━━\n"
@@ -170,6 +210,27 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
     item = SHOP_ITEMS[item_id]
     price = item["vip_price"] if u.is_vip else item["price"]
 
+    # 检查神秘宝箱限购
+    if item_id == "box":
+        bought_count, need_reset = get_box_limit_status(u)
+        if need_reset:
+            # 跨天了，重置计数
+            u.daily_box_buy_count = 0
+            bought_count = 0
+
+        limit = 5 if u.is_vip else 3
+        if bought_count >= limit:
+            session.close()
+            await reply_with_auto_delete(
+                msg,
+                f"🚫 <b>【 限 购 提 示 】</b>\n\n"
+                f"今日购买神秘宝箱已达上限喵~\n\n"
+                f"📊 <b>购买记录：</b> {bought_count}/{limit} 次\n"
+                f"{'👑 VIP 用户每日限购 5 次' if u.is_vip else '🌱 普通用户每日限购 3 次'}\n\n"
+                f"<i>\"明天再来碰运气吧！(｡･ω･｡)ﾉ♡\"</i>"
+            )
+            return
+
     if u.points < price:
         session.close()
         await reply_with_auto_delete(
@@ -196,6 +257,15 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
         gain = random.randint(100, 300)
         u.points += gain
         result_msg = f"🎁 <b>宝箱开出 {gain} MP！</b>"
+        # 更新限购计数
+        u.daily_box_buy_count = (u.daily_box_buy_count or 0) + 1
+        u.last_box_buy_date = datetime.now()
+        limit = 5 if u.is_vip else 3
+        remaining = limit - u.daily_box_buy_count
+        if remaining > 0:
+            result_msg += f"\n\n📊 <i>今日还可购买 {remaining}/{limit} 次</i>"
+        else:
+            result_msg += f"\n\n📊 <i>今日购买次数已用完</i>"
 
     elif item_id == "lucky":
         # 幸运草：设置幸运标记
@@ -274,6 +344,27 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item = SHOP_ITEMS[item_id]
     price = item["vip_price"] if u.is_vip else item["price"]
 
+    # 检查神秘宝箱限购
+    if item_id == "box":
+        bought_count, need_reset = get_box_limit_status(u)
+        if need_reset:
+            # 跨天了，重置计数
+            u.daily_box_buy_count = 0
+            bought_count = 0
+
+        limit = 5 if u.is_vip else 3
+        if bought_count >= limit:
+            session.close()
+            await query.edit_message_text(
+                f"🚫 <b>【 限 购 提 示 】</b>\n\n"
+                f"今日购买神秘宝箱已达上限喵~\n\n"
+                f"📊 <b>购买记录：</b> {bought_count}/{limit} 次\n"
+                f"{'👑 VIP 用户每日限购 5 次' if u.is_vip else '🌱 普通用户每日限购 3 次'}\n\n"
+                f"<i>\"明天再来碰运气吧！(｡･ω･｡)ﾉ♡\"</i>",
+                parse_mode='HTML'
+            )
+            return
+
     if u.points < price:
         await query.edit_message_text(
             f"💸 <b>【 魔 力 不 足 】</b>\n\n"
@@ -297,6 +388,15 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gain = random.randint(100, 300)
         u.points += gain
         result_msg = f"🎁 <b>宝箱开出 {gain} MP！</b>"
+        # 更新限购计数
+        u.daily_box_buy_count = (u.daily_box_buy_count or 0) + 1
+        u.last_box_buy_date = datetime.now()
+        limit = 5 if u.is_vip else 3
+        remaining = limit - u.daily_box_buy_count
+        if remaining > 0:
+            result_msg += f"\n\n📊 <i>今日还可购买 {remaining}/{limit} 次</i>"
+        else:
+            result_msg += f"\n\n📊 <i>今日购买次数已用完</i>"
     elif item_id == "lucky":
         u.lucky_boost = True
         result_msg = "🍀 <b>下次签到暴击率+50%！</b>"
@@ -371,10 +471,25 @@ async def shop_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"━━━━━━━━━━━━━━━━━━\n"
     )
 
+    # 构建商品列表（含限购信息）
     shop_list = ""
     for item_id, item in SHOP_ITEMS.items():
         price = item["vip_price"] if u.is_vip else item["price"]
-        shop_list += f"{item['emoji']} <b>{item['name']}</b> — <b>{price} MP</b>\n"
+        line = f"{item['emoji']} <b>{item['name']}</b> — <b>{price} MP</b>"
+
+        # 神秘宝箱显示限购信息
+        if item_id == "box":
+            bought_count, need_reset = get_box_limit_status(u)
+            if need_reset:
+                bought_count = 0
+            limit = 5 if u.is_vip else 3
+            remaining = max(0, limit - bought_count)
+            if remaining > 0:
+                line += f" <i>(今日可购 {remaining}/{limit})</i>"
+            else:
+                line += f" <i>(今日已达上限)</i>"
+
+        shop_list += line + "\n"
 
     txt += f"\n📦 <b>今日商品：</b>\n{shop_list}"
     txt += "\n━━━━━━━━━━━━━━━━━━\n"

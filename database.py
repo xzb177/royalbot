@@ -47,6 +47,9 @@ class UserBinding(Base):
     total_checkin_days = Column(Integer, default=0)  # 累计签到天数
     consecutive_checkin = Column(Integer, default=0) # 连续签到天数
     last_checkin_date = Column(DateTime)             # 上次签到日期（用于连续签到计算）
+    # === 商店限购字段 ===
+    last_box_buy_date = Column(DateTime)             # 上次购买神秘宝箱日期
+    daily_box_buy_count = Column(Integer, default=0) # 今日购买神秘宝箱次数
 
 class VIPApplication(Base):
     __tablename__ = 'vip_applications'

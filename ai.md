@@ -1361,3 +1361,48 @@ await query.edit_message_text("⏰ <b>决斗已超时喵！</b>...", parse_mode=
 - 重启机器人生效
 
 ---
+
+## 2026-01-02 修复商店购买按钮 + 神秘宝箱限购功能
+
+### 1. 搞定了啥
+- **修复商店购买按钮无响应**：`start_menu.py` 回调拦截导致商店按钮失效
+- **神秘宝箱限购功能**：每日购买次数限制，VIP享受更高限额
+- **限购显示优化**：商店页面显示剩余购买次数
+
+### 2. 关键信息
+**修改的文件（3个）：**
+- `plugins/start_menu.py:397` - 回调排除列表添加 `buy_` 和 `shop_`
+- `database.py:50-52` - 新增限购字段：
+  ```python
+  last_box_buy_date = Column(DateTime)             # 上次购买神秘宝箱日期
+  daily_box_buy_count = Column(Integer, default=0) # 今日购买神秘宝箱次数
+  ```
+
+- `plugins/shop.py` - 全面改造：
+  - 新增 `get_today()` 和 `get_box_limit_status()` 辅助函数
+  - 商品配置添加 `daily_limit` 限购设置
+  - 商店主页显示剩余购买次数
+  - 购买前检查限购
+  - 购买后更新计数并显示剩余次数
+  - 返回商店时显示最新限购状态
+
+**限购规则：**
+| 用户类型 | 每日限额 |
+|----------|----------|
+| 普通用户 | 3 次 |
+| VIP 用户 | 5 次 |
+
+**问题原因：**
+```python
+# 修复前（错误）
+app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_).*$"), group=1)
+
+# 修复后（正确）
+app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_|buy_|shop_).*$"), group=1)
+```
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 1757073）
+- 测试 `/shop` 命令和购买按钮功能
+
+---
