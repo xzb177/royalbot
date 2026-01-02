@@ -1,7 +1,19 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
+from types import SimpleNamespace
+
+
+def make_fake_update(query, **kwargs):
+    """创建 fake_update 对象，用于从回调调用命令函数"""
+    defaults = {
+        'effective_user': query.from_user,
+        'effective_message': query.message,
+        'message': query.message,
+    }
+    defaults.update(kwargs)
+    return SimpleNamespace(**defaults)
 
 
 def get_menu_layout(is_vip: bool = False) -> list:
@@ -76,10 +88,9 @@ def get_menu_text(user, is_vip: bool = False) -> str:
 
 async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user.id).first()
-    is_vip = u.is_vip if u else False
-    session.close()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user.id).first()
+        is_vip = u.is_vip if u else False
 
     txt = get_menu_text(user, is_vip)
     buttons = get_menu_layout(is_vip)
@@ -134,10 +145,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 返回菜单
     if data == "back_menu":
         user = query.from_user
-        session = Session()
-        u = session.query(UserBinding).filter_by(tg_id=user.id).first()
-        is_vip = u.is_vip if u else False
-        session.close()
+        with get_session() as session:
+            u = session.query(UserBinding).filter_by(tg_id=user.id).first()
+            is_vip = u.is_vip if u else False
 
         txt = get_menu_text(user, is_vip)
         buttons = get_menu_layout(is_vip)
@@ -150,123 +160,73 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 个人档案
     if data == "me":
         from plugins.me import me_panel
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'effective_message': query.message,
-            'message': query.message,
-            'callback_query': query,
-        })()
+        fake_update = make_fake_update(query, callback_query=query)
         await me_panel(fake_update, context)
 
     # 签到
     elif data == "checkin":
         from plugins.checkin_bind import checkin
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query)
         await checkin(fake_update, context)
 
     # 银行
     elif data == "bank":
         from plugins.bank import bank_panel
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query)
         await bank_panel(fake_update, context)
 
     # 商店
     elif data == "shop":
         from plugins.shop import shop_main
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query)
         await shop_main(fake_update, context)
 
     # 背包
     elif data == "bag":
         from plugins.bag import my_bag
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query)
         await my_bag(fake_update, context)
 
     # 排行榜
     if data == "hall":
         from plugins.hall import hall_leaderboard
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,  # 添加这个属性
-        })()
+        fake_update = make_fake_update(query)
         await hall_leaderboard(fake_update, context)
 
     # 活跃度
     elif data == "presence":
         from plugins.presence import presence_cmd
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,  # 添加这个属性
-        })()
+        fake_update = make_fake_update(query)
         await presence_cmd(fake_update, context)
 
     # 炼金
     elif data == "forge":
         from plugins.forge import forge_callback
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'callback_query': query,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query, callback_query=query)
         await forge_callback(fake_update, context)
 
     # 每日任务
     elif data == "daily_tasks":
         from plugins.unified_mission import mission_main
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-            'effective_chat': query.message.chat,
-        })()
+        fake_update = make_fake_update(query, effective_chat=query.message.chat)
         await mission_main(fake_update, context, "daily")
 
     # 幸运转盘
     elif data == "lucky_wheel":
         from plugins.lucky_wheel import wheel_cmd
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query)
         await wheel_cmd(fake_update, context)
 
     # 塔罗
     elif data == "tarot":
         from plugins.fun_games import tarot
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query)
         await tarot(fake_update, context)
 
     # 盲盒
     elif data == "poster":
         from plugins.fun_games import gacha_poster
-        fake_update = type('Update', (), {
-            'effective_user': query.from_user,
-            'message': query.message,
-            'effective_message': query.message,
-        })()
+        fake_update = make_fake_update(query)
         await gacha_poster(fake_update, context)
 
     # 决斗说明
@@ -292,11 +252,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # VIP中心
     elif data == "vip":
         user = query.from_user
-        from database import Session, UserBinding
-        session = Session()
-        u = session.query(UserBinding).filter_by(tg_id=user.id).first()
-        is_vip = u.is_vip if u else False
-        session.close()
+        from database import get_session, UserBinding
+        with get_session() as session:
+            u = session.query(UserBinding).filter_by(tg_id=user.id).first()
+            is_vip = u.is_vip if u else False
 
         if is_vip:
             txt = (
@@ -440,6 +399,6 @@ def register(app):
     app.add_handler(CommandHandler("menu", start_menu))
     app.add_handler(CommandHandler("help", help_manual))
     # 只处理其他模块未匹配的回调
-    # 排除: admin_(管理员), vip_(VIP审核), duel_(决斗), forge_(锻造操作), me_(个人档案操作)
-    #       buy_(购买), shop_home_(商店首页), wheel_(转盘), airdrop_(空投), mission_(悬赏任务)
-    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_accept|duel_reject|forge_again|me_|buy_|shop_home|wheel_spin|wheel_back|airdrop_open|mission_|mission_tab_).*$"), group=1)
+    # 排除: admin_(管理员), vip_(VIP审核), duel_accept/duel_reject(决斗响应), forge_(锻造操作), me_(个人档案操作)
+    #       buy_(购买), shop_(商店), wheel_(转盘), airdrop_(空投), mission_(悬赏任务), presence_(活跃度), emby_(媒体库)
+    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_accept|duel_reject|forge_|me_|buy_|shop_|wheel_|airdrop_|mission_|presence_|emby_).*$"), group=1)

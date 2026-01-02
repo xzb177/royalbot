@@ -6,7 +6,7 @@
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 import random
 
@@ -81,88 +81,94 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.effective_user
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user.id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
-    if not u or not u.emby_account:
-        await reply_with_auto_delete(msg, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
-        session.close()
-        return
+        if not u or not u.emby_account:
+            await reply_with_auto_delete(msg, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
+            return
 
-    # 检查锻造券
-    has_big_ticket = u.free_forges_big and u.free_forges_big > 0
-    has_small_ticket = (not has_big_ticket) and u.free_forges and u.free_forges > 0
+        # 检查锻造券
+        has_big_ticket = u.free_forges_big and u.free_forges_big > 0
+        has_small_ticket = (not has_big_ticket) and u.free_forges and u.free_forges > 0
 
-    base_cost = 200
-    if has_big_ticket:
-        cost = 0  # 大锻造锤免费
-        boost_rarity = True
-        used_ticket = "大锻造锤"
-    elif has_small_ticket:
-        cost = 0  # 小锻造锤免费
-        boost_rarity = False
-        used_ticket = "小锻造锤"
-    else:
-        cost = int(base_cost * 0.5) if u.is_vip else base_cost
-        boost_rarity = False
-        used_ticket = None
-
-    if not used_ticket and u.points < cost:
-        if u.is_vip:
-            text = (
-                f"⚒️ <b>【 皇 家 · 炼 金 工 坊 】</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"🔥 <b>魔法炉火熄灭了...</b>\n\n"
-                f"魔力不足喵！锻造需要 <b>{cost} MP</b>~\n"
-                f"当前余额：{u.points} MP\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>\"去签到攒点魔力再来吧 Master...(｡•́︿•̀｡)\"</i>"
-            )
+        base_cost = 200
+        if has_big_ticket:
+            cost = 0  # 大锻造锤免费
+            boost_rarity = True
+            used_ticket = "大锻造锤"
+        elif has_small_ticket:
+            cost = 0  # 小锻造锤免费
+            boost_rarity = False
+            used_ticket = "小锻造锤"
         else:
-            text = (
-                f"⚒️ <b>【 魔 法 学 院 · 炼 金 工 坊 】</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"🔥 <b>魔法炉火熄灭了...</b>\n\n"
-                f"魔力不足喵！锻造需要 <b>{cost} MP</b>~\n"
-                f"当前余额：{u.points} MP\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>💡 提示：VIP 锻造享受 <b>5 折</b> 优惠哦！</i>"
-            )
-        await reply_with_auto_delete(msg, text)
-        session.close()
-        return
+            cost = int(base_cost * 0.5) if u.is_vip else base_cost
+            boost_rarity = False
+            used_ticket = None
 
-    # 扣除费用或券
-    if used_ticket == "大锻造锤":
-        u.free_forges_big -= 1
-    elif used_ticket == "小锻造锤":
-        u.free_forges -= 1
-    else:
-        u.points -= cost
+        if not used_ticket and u.points < cost:
+            # 提前提取需要的属性
+            points = u.points
+            is_vip = u.is_vip
+            if is_vip:
+                text = (
+                    f"⚒️ <b>【 皇 家 · 炼 金 工 坊 】</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🔥 <b>魔法炉火熄灭了...</b>\n\n"
+                    f"魔力不足喵！锻造需要 <b>{cost} MP</b>~\n"
+                    f"当前余额：{points} MP\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>\"去签到攒点魔力再来吧 Master...(｡•́︿•̀｡)\"</i>"
+                )
+            else:
+                text = (
+                    f"⚒️ <b>【 魔 法 学 院 · 炼 金 工 坊 】</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🔥 <b>魔法炉火熄灭了...</b>\n\n"
+                    f"魔力不足喵！锻造需要 <b>{cost} MP</b>~\n"
+                    f"当前余额：{points} MP\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>💡 提示：VIP 锻造享受 <b>5 折</b> 优惠哦！</i>"
+                )
+            await reply_with_auto_delete(msg, text)
+            return
 
-    # 生成魔法武器（如果使用大锻造锤则提升稀有度）
-    new_name, base_atk, rank = _generate_weapon(boost_rarity=boost_rarity)
+        # 扣除费用或券
+        if used_ticket == "大锻造锤":
+            u.free_forges_big -= 1
+        elif used_ticket == "小锻造锤":
+            u.free_forges -= 1
+        else:
+            u.points -= cost
 
-    # 旧装备信息
-    old_weapon = u.weapon if u.weapon else "无"
-    old_atk = u.attack if u.attack else 0
+        # 生成魔法武器（如果使用大锻造锤则提升稀有度）
+        new_name, base_atk, rank = _generate_weapon(boost_rarity=boost_rarity)
 
-    # 更新装备
-    u.weapon = new_name
-    u.attack = base_atk
-    await track_activity_wrapper(user.id, "forge")
-    session.commit()
+        # 旧装备信息
+        old_weapon = u.weapon if u.weapon else "无"
+        old_atk = u.attack if u.attack else 0
 
-    vip_badge = " 👑" if u.is_vip else ""
+        # 更新装备
+        u.weapon = new_name
+        u.attack = base_atk
+        await track_activity_wrapper(user.id, "forge")
+        session.commit()
 
-    # 构建消耗文本
+        # 在session关闭前保存需要的值
+        vip_badge = " 👑" if u.is_vip else ""
+        emby_account = u.emby_account
+        if used_ticket:
+            if used_ticket == "大锻造锤":
+                remaining = u.free_forges_big
+            else:
+                remaining = u.free_forges
+
+    # 构建消耗文本（在with块外）
     if used_ticket:
         if used_ticket == "大锻造锤":
             cost_text = f"🎟️ 消耗：<b>{used_ticket}</b> (稀有度UP!)\n"
-            remaining = u.free_forges_big
         else:
             cost_text = f"🎟️ 消耗：<b>{used_ticket}</b>\n"
-            remaining = u.free_forges
         if remaining > 0:
             cost_text += f"📋 剩余券数：{remaining} 张\n"
     else:
@@ -172,7 +178,7 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚒️ <b>【 炼 金 成 功 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{cost_text}"
-        f"👤 锻造者：{u.emby_account}{vip_badge}\n"
+        f"👤 锻造者：{emby_account}{vip_badge}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🗑️ <b>替换旧物：</b> {old_weapon} (ATK: {old_atk})\n"
         f"✨ <b>获得新武器：</b> <b>{new_name}</b>\n"
@@ -184,7 +190,6 @@ async def forge_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     buttons = [[InlineKeyboardButton("🔄 再来一次", callback_data="forge_again")]]
     await reply_with_auto_delete(msg, txt, reply_markup=InlineKeyboardMarkup(buttons))
-    session.close()
 
 
 async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -193,70 +198,74 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     user = query.from_user
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user.id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
-    if not u or not u.emby_account:
-        await query.edit_message_text("👻 <b>请先 /bind 缔结魔法契约喵！</b>", parse_mode='HTML')
-        session.close()
-        return
+        if not u or not u.emby_account:
+            await query.edit_message_text("👻 <b>请先 /bind 缔结魔法契约喵！</b>", parse_mode='HTML')
+            return
 
-    # 检查锻造券
-    has_big_ticket = u.free_forges_big and u.free_forges_big > 0
-    has_small_ticket = (not has_big_ticket) and u.free_forges and u.free_forges > 0
+        # 检查锻造券
+        has_big_ticket = u.free_forges_big and u.free_forges_big > 0
+        has_small_ticket = (not has_big_ticket) and u.free_forges and u.free_forges > 0
 
-    base_cost = 200
-    if has_big_ticket:
-        cost = 0  # 大锻造锤免费
-        boost_rarity = True
-        used_ticket = "大锻造锤"
-    elif has_small_ticket:
-        cost = 0  # 小锻造锤免费
-        boost_rarity = False
-        used_ticket = "小锻造锤"
-    else:
-        cost = int(base_cost * 0.5) if u.is_vip else base_cost
-        boost_rarity = False
-        used_ticket = None
+        base_cost = 200
+        if has_big_ticket:
+            cost = 0  # 大锻造锤免费
+            boost_rarity = True
+            used_ticket = "大锻造锤"
+        elif has_small_ticket:
+            cost = 0  # 小锻造锤免费
+            boost_rarity = False
+            used_ticket = "小锻造锤"
+        else:
+            cost = int(base_cost * 0.5) if u.is_vip else base_cost
+            boost_rarity = False
+            used_ticket = None
 
-    if not used_ticket and u.points < cost:
-        await query.edit_message_text(
-            f"🔥 <b>魔力不足喵！</b>\n\n"
-            f"锻造需要 <b>{cost} MP</b>~\n"
-            f"当前余额：{u.points} MP",
-            parse_mode='HTML'
-        )
-        session.close()
-        return
+        if not used_ticket and u.points < cost:
+            points = u.points
+            await query.edit_message_text(
+                f"🔥 <b>魔力不足喵！</b>\n\n"
+                f"锻造需要 <b>{cost} MP</b>~\n"
+                f"当前余额：{points} MP",
+                parse_mode='HTML'
+            )
+            return
 
-    # 扣除费用或券
-    if used_ticket == "大锻造锤":
-        u.free_forges_big -= 1
-    elif used_ticket == "小锻造锤":
-        u.free_forges -= 1
-    else:
-        u.points -= cost
+        # 扣除费用或券
+        if used_ticket == "大锻造锤":
+            u.free_forges_big -= 1
+        elif used_ticket == "小锻造锤":
+            u.free_forges -= 1
+        else:
+            u.points -= cost
 
-    new_name, base_atk, rank = _generate_weapon(boost_rarity=boost_rarity)
+        new_name, base_atk, rank = _generate_weapon(boost_rarity=boost_rarity)
 
-    old_weapon = u.weapon if u.weapon else "无"
-    old_atk = u.attack if u.attack else 0
+        old_weapon = u.weapon if u.weapon else "无"
+        old_atk = u.attack if u.attack else 0
 
-    u.weapon = new_name
-    u.attack = base_atk
-    await track_activity_wrapper(user.id, "forge")
-    session.commit()
+        u.weapon = new_name
+        u.attack = base_atk
+        await track_activity_wrapper(user.id, "forge")
+        session.commit()
 
-    vip_badge = " 👑" if u.is_vip else ""
+        # 在session关闭前保存需要的值
+        vip_badge = " 👑" if u.is_vip else ""
+        emby_account = u.emby_account
+        if used_ticket:
+            if used_ticket == "大锻造锤":
+                remaining = u.free_forges_big
+            else:
+                remaining = u.free_forges
 
-    # 构建消耗文本
+    # 构建消耗文本（在with块外）
     if used_ticket:
         if used_ticket == "大锻造锤":
             cost_text = f"🎟️ 消耗：<b>{used_ticket}</b> (稀有度UP!)\n"
-            remaining = u.free_forges_big
         else:
             cost_text = f"🎟️ 消耗：<b>{used_ticket}</b>\n"
-            remaining = u.free_forges
         if remaining > 0:
             cost_text += f"📋 剩余券数：{remaining} 张\n"
     else:
@@ -266,7 +275,7 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚒️ <b>【 炼 金 成 功 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{cost_text}"
-        f"👤 锻造者：{u.emby_account}{vip_badge}\n"
+        f"👤 锻造者：{emby_account}{vip_badge}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🗑️ <b>替换旧物：</b> {old_weapon} (ATK: {old_atk})\n"
         f"✨ <b>获得新武器：</b> <b>{new_name}</b>\n"
@@ -278,7 +287,6 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     buttons = [[InlineKeyboardButton("🔄 再来一次", callback_data="forge_again")]]
     await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
-    session.close()
 
 
 async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -288,22 +296,25 @@ async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.effective_user
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
-    if not u or not u.emby_account:
-        await reply_with_auto_delete(msg, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
-        session.close()
-        return
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
-    weapon = u.weapon if u.weapon else "赤手空拳"
-    attack = u.attack if u.attack else 10
-    vip_badge = " 👑" if u.is_vip else ""
+        if not u or not u.emby_account:
+            await reply_with_auto_delete(msg, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
+            return
+
+        weapon = u.weapon if u.weapon else "赤手空拳"
+        attack = u.attack if u.attack else 10
+        is_vip = u.is_vip
+        emby_account = u.emby_account
+
+    vip_badge = " 👑" if is_vip else ""
 
     txt = (
         f"⚔️ <b>【 魔 法 武 器 栏 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>持有者：</b> {u.emby_account}{vip_badge}\n"
+        f"👤 <b>持有者：</b> {emby_account}{vip_badge}\n"
         f"🗡️ <b>当前武器：</b> <b>{weapon}</b>\n"
         f"💪 <b>战力评估：</b> <b>{attack}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -311,7 +322,6 @@ async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await reply_with_auto_delete(msg, txt)
-    session.close()
 
 
 def register(app):

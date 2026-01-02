@@ -6,7 +6,7 @@
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 
 # 排行榜每页显示数量
@@ -79,44 +79,47 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    session = Session()
 
-    current_user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        current_user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not current_user or not current_user.emby_account:
-        session.close()
-        await reply_with_auto_delete(msg, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
-        return
+        if not current_user or not current_user.emby_account:
+            await reply_with_auto_delete(msg, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
+            return
 
-    # 获取所有有战力的用户
-    all_users = session.query(UserBinding).filter(
-        UserBinding.emby_account != None,
-        UserBinding.attack > 0
-    ).order_by(UserBinding.attack.desc()).all()
+        # 获取所有有战力的用户
+        all_users = session.query(UserBinding).filter(
+            UserBinding.emby_account != None,
+            UserBinding.attack > 0
+        ).order_by(UserBinding.attack.desc()).all()
 
-    if not all_users:
-        session.close()
-        await reply_with_auto_delete(
-            msg,
-            f"🏆 <b>【 荣 耀 殿 堂 】</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"暂无战力记录喵！\n\n"
-            f"<i>\"快去锻造魔法武器提升战力吧！(｡•̀ᴗ-)✧\"</i>"
-        )
-        return
+        if not all_users:
+            await reply_with_auto_delete(
+                msg,
+                f"🏆 <b>【 荣 耀 殿 堂 】</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"暂无战力记录喵！\n\n"
+                f"<i>\"快去锻造魔法武器提升战力吧！(｡•̀ᴗ-)✧\"</i>"
+            )
+            return
 
-    # 获取当前用户排名
-    current_rank = None
-    for i, u in enumerate(all_users):
-        if u.tg_id == user_id:
-            current_rank = i + 1
-            break
+        # 获取当前用户排名
+        current_rank = None
+        for i, u in enumerate(all_users):
+            if u.tg_id == user_id:
+                current_rank = i + 1
+                break
 
-    # 获取 TOP 10
-    top_users = all_users[:PAGE_SIZE]
+        # 获取 TOP 10
+        top_users = all_users[:PAGE_SIZE]
 
-    # 构建消息
-    if current_user.is_vip:
+        # 在session关闭前保存需要的数据
+        is_vip = current_user.is_vip
+        attack = current_user.attack
+        weapon = current_user.weapon
+
+    # 构建消息（在session关闭后）
+    if is_vip:
         text = (
             f"🏆 <b>【 皇 家 · 荣 耀 殿 堂 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
@@ -131,8 +134,8 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += (
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
-                f"⚔️ <b>您的战力：</b> <b>{current_user.attack}</b>\n"
-                f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n"
+                f"⚔️ <b>您的战力：</b> <b>{attack}</b>\n"
+                f"🎖️ <b>您的称号：</b> {get_rank_title(attack)}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"<i>\"继续努力，看板娘相信您能登顶喵~(*/ω＼*)\"</i>"
             )
@@ -151,14 +154,14 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += (
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"📊 <b>您的排名：</b> 第 {current_rank} 位\n"
-                f"⚔️ <b>您的战力：</b> {current_user.attack}\n"
-                f"🎖️ <b>您的称号：</b> {get_rank_title(current_user.attack)}\n"
+                f"⚔️ <b>您的战力：</b> {attack}\n"
+                f"🎖️ <b>您的称号：</b> {get_rank_title(attack)}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"<i>💡 想获得专属称号和双倍奖励吗？觉醒 VIP 解锁更多皇家特权喵！</i>"
             )
 
     buttons = []
-    if current_user.weapon:
+    if weapon:
         buttons.append([InlineKeyboardButton("⚔️ 我的装备", callback_data="my_weapon")])
     buttons.append([InlineKeyboardButton("⚒️ 去炼金", callback_data="forge")])
 
@@ -167,7 +170,6 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text,
         reply_markup=InlineKeyboardMarkup(buttons) if buttons else None
     )
-    session.close()
 
 
 def register(app):

@@ -1,14 +1,13 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 
 async def vip_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
-    is_vip = u.is_vip if u else False
-    session.close()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        is_vip = u.is_vip if u else False
 
     if is_vip:
         txt = (

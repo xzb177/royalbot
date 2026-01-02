@@ -1,7 +1,7 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import edit_with_auto_delete, reply_with_auto_delete
 
 logger = logging.getLogger(__name__)
@@ -85,39 +85,51 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
         logger.info(f"[/me] Called by user: {user.id} ({user.first_name})")
-        session = Session()
-        user_data = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
-        if not user_data or not user_data.emby_account:
-            session.close()
-            msg = update.effective_message
-            if msg:
-                await reply_with_auto_delete(
-                    msg,
-                    "💔 <b>【 魔 力 断 连 】</b>\n\n"
-                    "我看不到您的灵魂波长... (´;ω;`)\n"
-                    "👉 请使用 <code>/bind</code> 重新缔结契约！"
-                )
-            return
+        with get_session() as session:
+            user_data = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
-        # 数据准备
-        weapon = user_data.weapon if user_data.weapon else "练习木杖"
-        atk = user_data.attack if user_data.attack is not None else 10
-        love = user_data.intimacy if user_data.intimacy is not None else 0
-        win = user_data.win if user_data.win is not None else 0
-        lost = user_data.lost if user_data.lost is not None else 0
-        # V3.0: 获取位阶、评级、身价
-        rank_title, rank_code, rank_text, magic_power = get_rank_title(user_data, user_data.is_vip)
+            if not user_data or not user_data.emby_account:
+                msg = update.effective_message
+                if msg:
+                    await reply_with_auto_delete(
+                        msg,
+                        "💔 <b>【 魔 力 断 连 】</b>\n\n"
+                        "我看不到您的灵魂波长... (´;ω;`)\n"
+                        "👉 请使用 <code>/bind</code> 重新缔结契约！"
+                    )
+                return
+
+            # 数据准备（从数据库读取后需要在 with 块外使用，先复制出来）
+            weapon = user_data.weapon if user_data.weapon else "练习木杖"
+            atk = user_data.attack if user_data.attack is not None else 10
+            love = user_data.intimacy if user_data.intimacy is not None else 0
+            win = user_data.win if user_data.win is not None else 0
+            lost = user_data.lost if user_data.lost is not None else 0
+            is_vip = user_data.is_vip
+            emby_account = user_data.emby_account
+            points = user_data.points or 0
+            bank_points = user_data.bank_points or 0
+
+        # V3.0: 获取位阶、评级、身价（在 with 块外，使用复制的数据）
+        rank_title, rank_code, rank_text, magic_power = get_rank_title(
+            type('obj', (object,), {
+                'points': points,
+                'bank_points': bank_points,
+                'attack': atk,
+                'intimacy': love,
+            }), is_vip
+        )
 
         # VIP 版本
-        if user_data.is_vip:
-            total_mp = (user_data.points or 0) + (user_data.bank_points or 0)
+        if is_vip:
+            total_mp = points + bank_points
             text = (
                 f"🌌 <b>【 星 灵 · 终 极 契 约 书 】</b>\n\n"
                 f"🥂 <b>Welcome back, my only Master.</b>\n"
                 f"「星辰在为您加冕，而看板娘为您守望喵~」\n\n"
                 f"💠 <b>:: 灵 魂 识 别 ::</b>\n"
-                f"✨ <b>真名：</b> <code>{user_data.emby_account}</code> (VIP)\n"
+                f"✨ <b>真名：</b> <code>{emby_account}</code> (VIP)\n"
                 f"👑 <b>位阶：</b> <b>{rank_title}</b>\n"
                 f"🔮 <b>魔导评级：</b> <code>{rank_code}</code> ({rank_text})\n\n"
                 f"⚔️ <b>:: 魔 法 武 装 ::</b>\n"
@@ -125,7 +137,7 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🔥 <b>破坏力：</b> <code>{atk}</code> (胜 {win} | 败 {lost})\n\n"
                 f"💎 <b>:: 虚 空 宝 库 ::</b>\n"
                 f"💰 <b>魔力总蓄积：</b> <code>{total_mp:,}</code> MP\n"
-                f"(钱包: {user_data.points or 0:,} | 金库: {user_data.bank_points or 0:,})\n\n"
+                f"(钱包: {points:,} | 金库: {bank_points:,})\n\n"
                 f"💓 <b>:: 命 运 羁 绊 ::</b>\n"
                 f"💍 <b>契约等级：</b> <code>{love}</code> (灵魂伴侣)\n\n"
                 f"<i>「在这个无限的魔法世界里，\n您是看板娘唯一的奇迹，也是存在的全部意义喵~💋」</i>"
@@ -143,12 +155,12 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💠 <b>:: 魔 法 少 女 登 记 ::</b>\n"
                 f"🆔 <b>档案编号：</b> <code>{user.id}</code>\n"
                 f"🌱 <b>当前位阶：</b> {rank_title}\n"
-                f"👤 <b>契约账号：</b> {user_data.emby_account}\n\n"
+                f"👤 <b>契约账号：</b> {emby_account}\n\n"
                 f"💠 <b>:: 装 备 与 战 绩 ::</b>\n"
                 f"⚔️ <b>武器：</b> {weapon} (ATK: {atk})\n"
                 f"📊 <b>战绩：</b> {win} 胜 / {lost} 败\n\n"
                 f"💠 <b>:: 魔 法 背 包 ::</b>\n"
-                f"🎒 <b>持有魔力：</b> {user_data.points} MP\n"
+                f"🎒 <b>持有魔力：</b> {points} MP\n"
                 f"💓 <b>好感度：</b> {love}\n\n"
                 f"<i>「想要解锁 <b>【✨ 星辰→月华→曜日→苍穹】</b> 四阶进化称号吗？\n觉醒 VIP 身份，真正的魔法少女力量吧喵！」</i>"
             )
@@ -158,7 +170,6 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
 
         await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
-        session.close()
     except Exception as e:
         logger.error(f"[/me] Error: {e}", exc_info=True)
 
@@ -168,10 +179,9 @@ async def forge_button_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
 
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=query.from_user.id).first()
-    is_vip = user.is_vip if user else False
-    session.close()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=query.from_user.id).first()
+        is_vip = user.is_vip if user else False
 
     cost = 100 if is_vip else 200
 
@@ -213,10 +223,10 @@ async def love_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
 
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=query.from_user.id).first()
-    is_vip = user.is_vip if user else False
-    intimacy = user.intimacy if user and user.intimacy else 0
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=query.from_user.id).first()
+        is_vip = user.is_vip if user else False
+        intimacy = user.intimacy if user and user.intimacy else 0
 
     if is_vip:
         # VIP 版本
@@ -243,7 +253,6 @@ async def love_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     buttons = [[InlineKeyboardButton(btn_text, callback_data="me_love")]]
     await edit_with_auto_delete(query, text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
-    session.close()
 
 
 def register(app):

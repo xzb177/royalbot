@@ -7,7 +7,7 @@
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from datetime import datetime, timedelta
 import random
 import asyncio
@@ -43,26 +43,23 @@ def pick_random_chest() -> dict:
 async def spawn_airdrop(context):
     """定时任务：在活跃群聊中生成空投"""
     # 获取有绑定用户的群聊列表
-    session = Session()
-    users = session.query(UserBinding).filter(UserBinding.emby_account != None).all()
+    with get_session() as session:
+        users = session.query(UserBinding).filter(UserBinding.emby_account != None).all()
 
-    if not users:
-        session.close()
-        return
+        if not users:
+            return
 
-    # 随机选一个用户的群聊（简化处理）
-    # 实际应该维护一个活跃群聊列表
-    selected_user = random.choice(users)
+        # 随机选一个用户的群聊（简化处理）
+        # 实际应该维护一个活跃群聊列表
+        selected_user = random.choice(users)
 
-    # 生成随机奖励
-    chest = pick_random_chest()
-    reward = random.randint(chest["min"], chest["max"])
+        # 生成随机奖励
+        chest = pick_random_chest()
+        reward = random.randint(chest["min"], chest["max"])
 
-    session.close()
-
-    # 发送空投消息（需要在群聊环境中）
-    # 这里只存储数据，实际发送由触发器完成
-    # 或者可以由管理员手动触发
+        # 发送空投消息（需要在群聊环境中）
+        # 这里只存储数据，实际发送由触发器完成
+        # 或者可以由管理员手动触发
 
 
 async def airdrop_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -159,50 +156,48 @@ async def airdrop_open_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # 标记为已打开（第一个打开的人获得）
     data["opened_by"].add(user_id)
 
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not u or not u.emby_account:
-        await query.edit_message_text("💔 <b>请先绑定账号才能领取宝箱！</b>", parse_mode='HTML')
-        session.close()
-        return
+        if not u or not u.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号才能领取宝箱！</b>", parse_mode='HTML')
+            return
 
-    reward = data["reward"]
-    chest_emoji = data["chest_emoji"]
-    chest_name = data["chest_name"]
+        reward = data["reward"]
+        chest_emoji = data["chest_emoji"]
+        chest_name = data["chest_name"]
 
-    # VIP加成
-    if u.is_vip:
-        bonus = int(reward * 0.5)
-        total = reward + bonus
-        u.points += total
-        vip_text = f"👑 <b>VIP加成：</b> +{bonus} MP\n"
-    else:
-        total = reward
-        u.points += reward
-        vip_text = ""
+        # VIP加成
+        if u.is_vip:
+            bonus = int(reward * 0.5)
+            total = reward + bonus
+            u.points += total
+            vip_text = f"👑 <b>VIP加成：</b> +{bonus} MP\n"
+        else:
+            total = reward
+            u.points += reward
+            vip_text = ""
 
-    session.commit()
-    session.close()
+        session.commit()
 
-    # 删除空投
-    del ACTIVE_AIRDROPS[chat_id]
+        # 删除空投
+        del ACTIVE_AIRDROPS[chat_id]
 
-    txt = (
-        f"{chest_emoji} <b>【 宝 箱 已 开 启 】</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"🎉 <b>开启者：</b> {query.from_user.first_name}\n"
-        f"📦 <b>宝箱：</b> {chest_name}\n"
-        f"💰 <b>获得：</b> +{reward} MP\n"
-        f"{vip_text}"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"💎 <b>总计：</b> {total} MP"
-    )
+        txt = (
+            f"{chest_emoji} <b>【 宝 箱 已 开 启 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🎉 <b>开启者：</b> {query.from_user.first_name}\n"
+            f"📦 <b>宝箱：</b> {chest_name}\n"
+            f"💰 <b>获得：</b> +{reward} MP\n"
+            f"{vip_text}"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💎 <b>总计：</b> {total} MP"
+        )
 
-    try:
-        await query.edit_message_text(txt, parse_mode='HTML')
-    except Exception:
-        await query.message.reply_html(txt)
+        try:
+            await query.edit_message_text(txt, parse_mode='HTML')
+        except Exception:
+            await query.message.reply_html(txt)
 
 
 def register(app):

@@ -1,0 +1,27 @@
+#!/bin/bash
+# RoyalBot Pre-commit Hook
+#
+# 在每次 git commit 前自动运行代码检查
+#
+# 安装方式：cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "🔍 Running code checks..."
+
+# 运行代码检查脚本
+if [ -f "scripts/check_code.py" ]; then
+    python3 scripts/check_code.py
+    CHECK_RESULT=$?
+    if [ $CHECK_RESULT -ne 0 ]; then
+        echo ""
+        echo "❌ 代码检查发现问题！"
+        echo "请修复后再提交，或使用 --no-verify 跳过检查"
+        exit 1
+    fi
+else
+    echo "⚠️  警告: scripts/check_code.py 不存在，跳过代码检查"
+fi
+
+echo "✅ 代码检查通过"
+exit 0

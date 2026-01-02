@@ -2,7 +2,7 @@ from telegram import Update, BotCommand, BotCommandScopeChat, BotCommandScopeDef
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from config import Config
 from utils import reply_with_auto_delete
-from database import Session, UserBinding, VIPApplication
+from database import get_session, UserBinding, VIPApplication
 
 MY_ADMIN_ID = Config.OWNER_ID  # 从配置加载管理员ID
 
@@ -31,7 +31,9 @@ PUBLIC_COMMANDS = [
 
 ADMIN_COMMANDS = [
     ("admin", "🛡️ 控制台"), ("say", "🗣️ 全员广播"),
-    ("announce", "📢 群组公告"),
+    ("announce", "📢 群组公告"), ("push", "📜 有奖推送"),
+    ("emby_push", "🎬 Emby推送"), ("emby_list", "📋 Emby列表"),
+    ("emby_showcase", "🖼️ 精品推送"), ("emby_weekly", "📊 周报统计"),
     ("sync", "🔄 刷新菜单配置")
 ]
 
@@ -51,19 +53,18 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(update.message, "⛔ <b>权限不足</b>\n此命令仅限管理员使用。")
         return
 
-    session = Session()
+    with get_session() as session:
+        # 统计数据
+        total_users = session.query(UserBinding).count()
+        vip_users = session.query(UserBinding).filter_by(is_vip=True).count()
+        total_points = session.query(UserBinding).count()
+        pending_apps = session.query(VIPApplication).filter_by(status='pending').count()
 
-    # 统计数据
-    total_users = session.query(UserBinding).count()
-    vip_users = session.query(UserBinding).filter_by(is_vip=True).count()
-    total_points = session.query(UserBinding).count()
-    pending_apps = session.query(VIPApplication).filter_by(status='pending').count()
-
-    # 计算总流通积分
-    users = session.query(UserBinding).all()
-    wallet_points = sum(u.points for u in users)
-    bank_points = sum(u.bank_points for u in users)
-    total_points = wallet_points + bank_points
+        # 计算总流通积分
+        users = session.query(UserBinding).all()
+        wallet_points = sum(u.points for u in users)
+        bank_points = sum(u.bank_points for u in users)
+        total_points = wallet_points + bank_points
 
     text = (
         f"🛡️ <b>【 管理员控制台 】</b>\n\n"
@@ -89,7 +90,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔄 刷新菜单", callback_data="admin_sync")],
     ]
 
-    session.close()
     await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
@@ -103,7 +103,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     data = query.data
-    session = Session()
 
     if data == "admin_sync":
         # 刷新命令菜单
@@ -119,12 +118,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "admin_back":
         # 返回主面板
-        total_users = session.query(UserBinding).count()
-        vip_users = session.query(UserBinding).filter_by(is_vip=True).count()
-        pending_apps = session.query(VIPApplication).filter_by(status='pending').count()
-        users = session.query(UserBinding).all()
-        wallet_points = sum(u.points for u in users)
-        bank_points = sum(u.bank_points for u in users)
+        with get_session() as session:
+            total_users = session.query(UserBinding).count()
+            vip_users = session.query(UserBinding).filter_by(is_vip=True).count()
+            pending_apps = session.query(VIPApplication).filter_by(status='pending').count()
+            users = session.query(UserBinding).all()
+            wallet_points = sum(u.points for u in users)
+            bank_points = sum(u.bank_points for u in users)
 
         text = (
             f"🛡️ <b>【 管理员控制台 】</b>\n\n"
@@ -186,18 +186,19 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "admin_apps":
-        pending = session.query(VIPApplication).filter_by(status='pending').all()
-        if not pending:
-            text = "📋 <b>【 VIP 申请列表 】</b>\n\n✨ 暂无待审核申请"
-        else:
-            text = f"📋 <b>【 VIP 申请列表 】</b>\n\n共有 {len(pending)} 条待审核申请：\n\n"
-            for app in pending[:10]:  # 最多显示10条
-                user = session.query(UserBinding).filter_by(tg_id=app.tg_id).first()
-                text += f"📌 <code>{app.tg_id}</code> - {app.username or '未知'}\n"
-                text += f"   Emby: {app.emby_account}\n"
-                text += f"   状态: {app.status}\n\n"
-            if len(pending) > 10:
-                text += f"... 还有 {len(pending) - 10} 条申请"
+        with get_session() as session:
+            pending = session.query(VIPApplication).filter_by(status='pending').all()
+            if not pending:
+                text = "📋 <b>【 VIP 申请列表 】</b>\n\n✨ 暂无待审核申请"
+            else:
+                text = f"📋 <b>【 VIP 申请列表 】</b>\n\n共有 {len(pending)} 条待审核申请：\n\n"
+                for app in pending[:10]:  # 最多显示10条
+                    user = session.query(UserBinding).filter_by(tg_id=app.tg_id).first()
+                    text += f"📌 <code>{app.tg_id}</code> - {app.username or '未知'}\n"
+                    text += f"   Emby: {app.emby_account}\n"
+                    text += f"   状态: {app.status}\n\n"
+                if len(pending) > 10:
+                    text += f"... 还有 {len(pending) - 10} 条申请"
 
         buttons = [[InlineKeyboardButton("🔙 返回", callback_data="admin_back")]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
@@ -212,8 +213,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 返回", callback_data="admin_back")]])
         )
-
-    session.close()
 
 
 async def cmd_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -231,8 +230,8 @@ async def cmd_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(update.message, "⚠️ <b>用户ID必须是数字</b>")
         return
 
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=target_id).first()
 
     if not user:
         await reply_with_auto_delete(update.message, f"❌ 用户 <code>{target_id}</code> 不存在")
@@ -254,8 +253,6 @@ async def cmd_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await reply_with_auto_delete(update.message, text)
 
-    session.close()
-
 
 async def cmd_addpoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """给用户添加积分"""
@@ -273,17 +270,19 @@ async def cmd_addpoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(update.message, "⚠️ <b>参数错误</b>\n用户ID和数量必须是数字")
         return
 
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+        if user:
+            user.points += amount
+            session.commit()
+            success = True
+        else:
+            success = False
 
-    if not user:
+    if not success:
         await reply_with_auto_delete(update.message, f"❌ 用户 <code>{target_id}</code> 不存在")
     else:
-        user.points += amount
-        session.commit()
         await reply_with_auto_delete(update.message, f"✅ <b>操作成功</b>\n已给用户 <code>{target_id}</code> 添加 <b>{amount}</b> MP")
-
-    session.close()
 
 
 async def cmd_delpoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -302,17 +301,19 @@ async def cmd_delpoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(update.message, "⚠️ <b>参数错误</b>\n用户ID和数量必须是数字")
         return
 
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+        if user:
+            user.points = max(0, user.points - amount)
+            session.commit()
+            success = True
+        else:
+            success = False
 
-    if not user:
+    if not success:
         await reply_with_auto_delete(update.message, f"❌ 用户 <code>{target_id}</code> 不存在")
     else:
-        user.points = max(0, user.points - amount)
-        session.commit()
         await reply_with_auto_delete(update.message, f"✅ <b>操作成功</b>\n已扣除用户 <code>{target_id}</code> 的 <b>{amount}</b> MP")
-
-    session.close()
 
 
 async def cmd_setvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -330,17 +331,19 @@ async def cmd_setvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(update.message, "⚠️ <b>用户ID必须是数字</b>")
         return
 
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+        if user:
+            user.is_vip = True
+            session.commit()
+            success = True
+        else:
+            success = False
 
-    if not user:
+    if not success:
         await reply_with_auto_delete(update.message, f"❌ 用户 <code>{target_id}</code> 不存在")
     else:
-        user.is_vip = True
-        session.commit()
         await reply_with_auto_delete(update.message, f"👑 <b>操作成功</b>\n用户 <code>{target_id}</code> 已设置为 VIP")
-
-    session.close()
 
 
 async def cmd_unvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -358,17 +361,19 @@ async def cmd_unvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(update.message, "⚠️ <b>用户ID必须是数字</b>")
         return
 
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=target_id).first()
+        if user:
+            user.is_vip = False
+            session.commit()
+            success = True
+        else:
+            success = False
 
-    if not user:
+    if not success:
         await reply_with_auto_delete(update.message, f"❌ 用户 <code>{target_id}</code> 不存在")
     else:
-        user.is_vip = False
-        session.commit()
         await reply_with_auto_delete(update.message, f"👑 <b>操作成功</b>\n用户 <code>{target_id}</code> 已取消 VIP")
-
-    session.close()
 
 
 async def cmd_say(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,8 +386,10 @@ async def cmd_say(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     message = " ".join(context.args)
-    session = Session()
-    users = session.query(UserBinding).all()
+
+    with get_session() as session:
+        users = session.query(UserBinding).all()
+
     success = 0
     failed = 0
 
@@ -393,7 +400,6 @@ async def cmd_say(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             failed += 1
 
-    session.close()
     await reply_with_auto_delete(update.message, f"✅ <b>广播发送完成</b>\n成功：{success}\n失败：{failed}")
 
 

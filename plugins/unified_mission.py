@@ -7,7 +7,7 @@
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 from datetime import datetime, date, timedelta
 import random
@@ -219,103 +219,102 @@ async def mission_main(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: 
         return
 
     user_id = update.effective_user.id
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not u or not u.emby_account:
-        session.close()
-        target = query.edit_message_text if query else msg.reply_html
-        await target("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
-        return
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    vip_badge = " 👑" if u.is_vip else ""
+        if not u or not u.emby_account:
+            target = query.edit_message_text if query else msg.reply_html
+            await target("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
 
-    # 构建界面
-    if tab == "daily":
-        tasks = get_user_daily_tasks(u)
-        session.commit()
+        vip_badge = " 👑" if u.is_vip else ""
 
-        completed = sum(1 for t in tasks.values() if t["done"])
-        total = len(tasks)
-        total_reward = sum(t["reward"] for t in tasks.values() if not t["done"])
+        # 构建界面
+        if tab == "daily":
+            tasks = get_user_daily_tasks(u)
+            session.commit()
 
-        txt = (
-            f"📋 <b>【 每 日 任 务 】</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>魔法少女：</b> {u.emby_account}{vip_badge}\n"
-            f"📊 <b>完成进度：</b> {completed}/{total}\n"
-            f"💰 <b>剩余奖励：</b> {total_reward} MP\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-        )
+            completed = sum(1 for t in tasks.values() if t["done"])
+            total = len(tasks)
+            total_reward = sum(t["reward"] for t in tasks.values() if not t["done"])
 
-        for task in tasks.values():
-            status = "✅" if task["done"] else "⬜"
-            txt += (
-                f"{status} {task['emoji']} <b>{task['name']}</b>\n"
-                f"   <i>{task['desc']}</i>\n"
-                f"   进度: {task['progress']}/{task['target']} | 奖励: {task['reward']} MP\n\n"
-            )
-
-        txt += (
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"<i>💡 完成任务自动发放奖励</i>\n"
-            f"<i>👑 VIP用户奖励+50%</i>"
-        )
-
-        buttons = [
-            [InlineKeyboardButton("📜 悬赏任务", callback_data="mission_tab_bounty")],
-            [InlineKeyboardButton("🔄 刷新", callback_data="mission_tab_daily")]
-        ]
-
-    elif tab == "bounty":
-        chat_id = update.effective_chat.id if update.effective_chat else user_id
-        bounty = CURRENT_BOUNTY.get(chat_id)
-
-        txt = (
-            f"📜 <b>【 悬 赏 任 务 】</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-        )
-
-        if bounty:
-            bounty_type = bounty["type"]
-            bounty_info = BOUNTY_TYPES[bounty_type]
-            txt += (
-                f"{bounty_info['emoji']} <b>{bounty_info['name']}</b>\n"
+            txt = (
+                f"📋 <b>【 每 日 任 务 】</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>魔法少女：</b> {u.emby_account}{vip_badge}\n"
+                f"📊 <b>完成进度：</b> {completed}/{total}\n"
+                f"💰 <b>剩余奖励：</b> {total_reward} MP\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
             )
 
-            if bounty_type == "quiz":
-                txt += f"🧠 <b>魔法谜题：</b> <code>{bounty.get('question', '?')}</code>\n"
+            for task in tasks.values():
+                status = "✅" if task["done"] else "⬜"
+                txt += (
+                    f"{status} {task['emoji']} <b>{task['name']}</b>\n"
+                    f"   <i>{task['desc']}</i>\n"
+                    f"   进度: {task['progress']}/{task['target']} | 奖励: {task['reward']} MP\n\n"
+                )
+
+            txt += (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"<i>💡 完成任务自动发放奖励</i>\n"
+                f"<i>👑 VIP用户奖励+50%</i>"
+            )
+
+            buttons = [
+                [InlineKeyboardButton("📜 悬赏任务", callback_data="mission_tab_bounty")],
+                [InlineKeyboardButton("🔄 刷新", callback_data="mission_tab_daily")]
+            ]
+
+        elif tab == "bounty":
+            chat_id = update.effective_chat.id if update.effective_chat else user_id
+            bounty = CURRENT_BOUNTY.get(chat_id)
+
+            txt = (
+                f"📜 <b>【 悬 赏 任 务 】</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+            )
+
+            if bounty:
+                bounty_type = bounty["type"]
+                bounty_info = BOUNTY_TYPES[bounty_type]
+                txt += (
+                    f"{bounty_info['emoji']} <b>{bounty_info['name']}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                )
+
+                if bounty_type == "quiz":
+                    txt += f"🧠 <b>魔法谜题：</b> <code>{bounty.get('question', '?')}</code>\n"
+                else:
+                    target = bounty.get("target", 1)
+                    desc = bounty_info["desc_template"].format(target=target)
+                    txt += f"{desc}\n"
+
+                txt += (
+                    f"\n💰 <b>悬赏金额：</b> <b>{bounty['reward']} MP</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>\"先完成者得奖！加油！\"</i>"
+                )
+
+                buttons = [
+                    [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
+                ]
             else:
-                target = bounty.get("target", 1)
-                desc = bounty_info["desc_template"].format(target=target)
-                txt += f"{desc}\n"
+                txt += (
+                    f"<i>当前没有悬赏任务...</i>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"💡 使用 <code>/mission</code> 发布悬赏\n"
+                    f"💡 管理员可发布群悬赏任务"
+                )
 
-            txt += (
-                f"\n💰 <b>悬赏金额：</b> <b>{bounty['reward']} MP</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>\"先完成者得奖！加油！\"</i>"
-            )
+                buttons = [
+                    [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
+                    [InlineKeyboardButton("🎲 发布悬赏", callback_data="mission_post_bounty")]
+                ]
 
-            buttons = [
-                [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
-            ]
-        else:
-            txt += (
-                f"<i>当前没有悬赏任务...</i>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"💡 使用 <code>/mission</code> 发布悬赏\n"
-                f"💡 管理员可发布群悬赏任务"
-            )
 
-            buttons = [
-                [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
-                [InlineKeyboardButton("🎲 发布悬赏", callback_data="mission_post_bounty")]
-            ]
-
-    session.close()
-
-    # 发送/编辑消息
+    # 发送/编辑消息（在 with 块外）
     if query:
         try:
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
@@ -423,82 +422,79 @@ async def check_bounty_progress(update: Update, context: ContextTypes.DEFAULT_TY
     if task_type != trigger_type:
         return
 
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=uid).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=uid).first()
 
-    if not u:
-        session.close()
-        return
+        if not u:
+            return
 
-    completed = False
-    title = ""
+        completed = False
+        title = ""
 
-    if task_type == "chat":
-        current = mission["progress"].get(uid, 0) + 1
-        mission["progress"][uid] = current
-        if current >= mission["target"]:
-            completed = True
-            title = BOUNTY_TYPES["chat"]["title"]
-
-    elif task_type == "duel":
-        current_wins = u.win or 0
-        if uid not in mission["snapshot"]:
-            mission["snapshot"][uid] = current_wins
-        else:
-            delta = current_wins - mission["snapshot"][uid]
-            mission["progress"][uid] = delta
-            if delta >= mission["target"]:
+        if task_type == "chat":
+            current = mission["progress"].get(uid, 0) + 1
+            mission["progress"][uid] = current
+            if current >= mission["target"]:
                 completed = True
-                title = BOUNTY_TYPES["duel"]["title"]
+                title = BOUNTY_TYPES["chat"]["title"]
 
-    elif task_type == "tarot":
-        current_count = u.daily_tarot_count or 0
-        if uid not in mission["snapshot"]:
-            mission["snapshot"][uid] = current_count
-        else:
-            delta = current_count - mission["snapshot"][uid]
-            mission["progress"][uid] = delta
-            if delta >= mission["target"]:
-                completed = True
-                title = BOUNTY_TYPES["tarot"]["title"]
+        elif task_type == "duel":
+            current_wins = u.win or 0
+            if uid not in mission["snapshot"]:
+                mission["snapshot"][uid] = current_wins
+            else:
+                delta = current_wins - mission["snapshot"][uid]
+                mission["progress"][uid] = delta
+                if delta >= mission["target"]:
+                    completed = True
+                    title = BOUNTY_TYPES["duel"]["title"]
 
-    elif task_type == "forge":
-        current_count = u.daily_forge_count or 0
-        if uid not in mission["snapshot"]:
-            mission["snapshot"][uid] = current_count
-        else:
-            delta = current_count - mission["snapshot"][uid]
-            mission["progress"][uid] = delta
-            if delta >= mission["target"]:
-                completed = True
-                title = BOUNTY_TYPES["forge"]["title"]
+        elif task_type == "tarot":
+            current_count = u.daily_tarot_count or 0
+            if uid not in mission["snapshot"]:
+                mission["snapshot"][uid] = current_count
+            else:
+                delta = current_count - mission["snapshot"][uid]
+                mission["progress"][uid] = delta
+                if delta >= mission["target"]:
+                    completed = True
+                    title = BOUNTY_TYPES["tarot"]["title"]
 
-    elif task_type == "box":
-        current_count = u.daily_box_count or 0
-        if uid not in mission["snapshot"]:
-            mission["snapshot"][uid] = current_count
-        else:
-            delta = current_count - mission["snapshot"][uid]
-            mission["progress"][uid] = delta
-            if delta >= mission["target"]:
-                completed = True
-                title = BOUNTY_TYPES["box"]["title"]
+        elif task_type == "forge":
+            current_count = u.daily_forge_count or 0
+            if uid not in mission["snapshot"]:
+                mission["snapshot"][uid] = current_count
+            else:
+                delta = current_count - mission["snapshot"][uid]
+                mission["progress"][uid] = delta
+                if delta >= mission["target"]:
+                    completed = True
+                    title = BOUNTY_TYPES["forge"]["title"]
 
-    elif task_type == "gift":
-        current_count = u.daily_gift_count or 0
-        if uid not in mission["snapshot"]:
-            mission["snapshot"][uid] = current_count
-        else:
-            delta = current_count - mission["snapshot"][uid]
-            mission["progress"][uid] = delta
-            if delta >= mission["target"]:
-                completed = True
-                title = BOUNTY_TYPES["gift"]["title"]
+        elif task_type == "box":
+            current_count = u.daily_box_count or 0
+            if uid not in mission["snapshot"]:
+                mission["snapshot"][uid] = current_count
+            else:
+                delta = current_count - mission["snapshot"][uid]
+                mission["progress"][uid] = delta
+                if delta >= mission["target"]:
+                    completed = True
+                    title = BOUNTY_TYPES["box"]["title"]
 
-    session.close()
+        elif task_type == "gift":
+            current_count = u.daily_gift_count or 0
+            if uid not in mission["snapshot"]:
+                mission["snapshot"][uid] = current_count
+            else:
+                delta = current_count - mission["snapshot"][uid]
+                mission["progress"][uid] = delta
+                if delta >= mission["target"]:
+                    completed = True
+                    title = BOUNTY_TYPES["gift"]["title"]
 
-    if completed:
-        await settle_bounty(update, context, uid, title)
+        if completed:
+            await settle_bounty(update, context, uid, title)
 
 
 async def check_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -528,23 +524,22 @@ async def settle_bounty(update: Update, context: ContextTypes.DEFAULT_TYPE, winn
 
     reward = mission["reward"]
 
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=winner_id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=winner_id).first()
 
-    bonus_msg = ""
-    winner_name = update.effective_user.first_name
+        bonus_msg = ""
+        winner_name = update.effective_user.first_name
 
-    if u:
-        if u.is_vip:
-            bonus = int(reward * 0.2)
-            reward += bonus
-            bonus_msg = f" (👑 VIP加成 +{bonus})"
+        if u:
+            if u.is_vip:
+                bonus = int(reward * 0.2)
+                reward += bonus
+                bonus_msg = f" (👑 VIP加成 +{bonus})"
 
-        u.points += reward
-        winner_name = u.emby_account or winner_name
-        session.commit()
+            u.points += reward
+            winner_name = u.emby_account or winner_name
+            session.commit()
 
-    session.close()
 
     task_type = mission["type"]
     task_emoji = BOUNTY_TYPES[task_type]["emoji"]
@@ -582,37 +577,35 @@ async def on_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type == "private":
         return
 
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user.id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
-    if not u:
-        session.close()
-        return
+        if not u:
+            return
 
-    # 检查每日任务进度
-    new_completed, task_name, base_reward = update_task_progress(u, "chat", 1)
+        # 检查每日任务进度
+        new_completed, task_name, base_reward = update_task_progress(u, "chat", 1)
 
-    if new_completed:
-        reward = base_reward
-        if u.is_vip:
-            reward = int(reward * 1.5)
+        if new_completed:
+            reward = base_reward
+            if u.is_vip:
+                reward = int(reward * 1.5)
 
-        u.points += reward
-        session.commit()
+            u.points += reward
+            session.commit()
 
-        msg = (
-            f"🎉 <b>【 每 日 任 务 · 完 成 ！】</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"✨ <b>完成任务：</b> {task_name}\n"
-            f"💰 <b>获得奖励：</b> +{reward} MP\n"
-            f"{'👑 VIP加成 +50%' if u.is_vip else ''}\n"
-            f"━━━━━━━━━━━━━━━━━━"
-        )
-        await reply_with_auto_delete(update.message, msg, disable_notification=True)
+            msg = (
+                f"🎉 <b>【 每 日 任 务 · 完 成 ！】</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"✨ <b>完成任务：</b> {task_name}\n"
+                f"💰 <b>获得奖励：</b> +{reward} MP\n"
+                f"{'👑 VIP加成 +50%' if u.is_vip else ''}\n"
+                f"━━━━━━━━━━━━━━━━━━"
+            )
+            await reply_with_auto_delete(update.message, msg, disable_notification=True)
 
-    session.close()
 
-    # 检查悬赏进度
+    # 检查悬赏进度（在 with 块外）
     await check_bounty_progress(update, context, "chat")
 
     # 检查数学题
@@ -627,36 +620,33 @@ async def track_and_check_task(user_id: int, task_type: str) -> tuple:
     追踪并检查任务进度
     返回：(是否有新完成，消息文本)
     """
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not u:
-        session.close()
+        if not u:
+            return False, None
+
+        new_completed, task_name, base_reward = update_task_progress(u, task_type, 1)
+
+        if new_completed:
+            reward = base_reward
+            if u.is_vip:
+                reward = int(reward * 1.5)
+
+            u.points += reward
+            session.commit()
+
+            msg = (
+                f"🎉 <b>【 每 日 任 务 · 完 成 ！】</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"✨ <b>完成任务：</b> {task_name}\n"
+                f"💰 <b>获得奖励：</b> +{reward} MP\n"
+                f"{'👑 VIP加成 +50%' if u.is_vip else ''}\n"
+                f"━━━━━━━━━━━━━━━━━━"
+            )
+            return True, msg
+
         return False, None
-
-    new_completed, task_name, base_reward = update_task_progress(u, task_type, 1)
-
-    if new_completed:
-        reward = base_reward
-        if u.is_vip:
-            reward = int(reward * 1.5)
-
-        u.points += reward
-        session.commit()
-
-        msg = (
-            f"🎉 <b>【 每 日 任 务 · 完 成 ！】</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"✨ <b>完成任务：</b> {task_name}\n"
-            f"💰 <b>获得奖励：</b> +{reward} MP\n"
-            f"{'👑 VIP加成 +50%' if u.is_vip else ''}\n"
-            f"━━━━━━━━━━━━━━━━━━"
-        )
-        session.close()
-        return True, msg
-
-    session.close()
-    return False, None
 
 
 # ==========================================

@@ -7,7 +7,7 @@
 from collections import Counter
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 
 
@@ -39,86 +39,84 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    # 检查是否绑定
-    if not u or not u.emby_account:
-        session.close()
+        # 检查是否绑定
+        if not u or not u.emby_account:
+            await reply_with_auto_delete(
+                msg,
+                "💔 <b>请先绑定账号喵！</b>\n\n"
+                "使用 <code>/bind 账号</code> 绑定后再查看背包~"
+            )
+            return
+
+        # 解析背包物品
+        raw_items = u.items if u.items else ""
+
+        if not raw_items.strip():
+            items_display = "🍃 <i>包包空空的...去抽点盲盒吧喵~(｡･ω･｡)</i>"
+        else:
+            # 统计物品数量
+            items_list = [item.strip() for item in raw_items.split(",") if item.strip()]
+            counts = Counter(items_list)
+
+            # 按稀有度分组
+            rarity_groups = {
+                "🌈": [],  # UR
+                "🟡": [],  # SSR
+                "🟣": [],  # SR
+                "🔵": [],  # R
+                "⚪": [],  # N
+            }
+
+            # 将物品分组
+            for item_name, num in counts.items():
+                emoji, _ = get_item_rarity(item_name)
+                rarity_groups[emoji].append((item_name, num))
+
+            # 构建显示文本
+            items_display = ""
+            for emoji in ["🌈", "🟡", "🟣", "🔵", "⚪"]:
+                group = rarity_groups[emoji]
+                if group:
+                    items_display += f"\n{emoji} <b>{RARITY_CONFIG[emoji]['name']}</b> 稀有度：\n"
+                    for item_name, num in group:
+                        items_display += f"   • <b>{item_name}</b> x{num}\n"
+
+        # 计算总物品数
+        total_items = len(raw_items.split(",")) if raw_items.strip() else 0
+
+        # 显示VIP状态
+        vip_badge = " 👑" if u.is_vip else ""
+
+        txt = (
+            f"🎒 <b>【 魔 法 少 女 的 背 包 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>主人：</b> {u.emby_account}{vip_badge}\n"
+            f"💎 <b>魔力结晶：</b> {u.points} MP\n"
+            f"⚔️ <b>战力值：</b> {u.attack or 10}\n"
+            f"📊 <b>藏品总数：</b> {total_items} 件\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📦 <b>魔法道具收藏：</b>{items_display}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<i>\"快去 /poster 填充你的宝库吧喵！(｡•̀ᴗ-)✧\"</i>"
+        )
+
+        # 快捷按钮
+        keyboard = [
+            [
+                InlineKeyboardButton("🎰 抽盲盒", callback_data="bag_gacha"),
+                InlineKeyboardButton("🔮 占卜", callback_data="bag_tarot")
+            ],
+            [InlineKeyboardButton("📜 个人档案", callback_data="bag_me")]
+        ]
+
         await reply_with_auto_delete(
             msg,
-            "💔 <b>请先绑定账号喵！</b>\n\n"
-            "使用 <code>/bind 账号</code> 绑定后再查看背包~"
+            txt,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-
-    # 解析背包物品
-    raw_items = u.items if u.items else ""
-
-    if not raw_items.strip():
-        items_display = "🍃 <i>包包空空的...去抽点盲盒吧喵~(｡･ω･｡)</i>"
-    else:
-        # 统计物品数量
-        items_list = [item.strip() for item in raw_items.split(",") if item.strip()]
-        counts = Counter(items_list)
-
-        # 按稀有度分组
-        rarity_groups = {
-            "🌈": [],  # UR
-            "🟡": [],  # SSR
-            "🟣": [],  # SR
-            "🔵": [],  # R
-            "⚪": [],  # N
-        }
-
-        # 将物品分组
-        for item_name, num in counts.items():
-            emoji, _ = get_item_rarity(item_name)
-            rarity_groups[emoji].append((item_name, num))
-
-        # 构建显示文本
-        items_display = ""
-        for emoji in ["🌈", "🟡", "🟣", "🔵", "⚪"]:
-            group = rarity_groups[emoji]
-            if group:
-                items_display += f"\n{emoji} <b>{RARITY_CONFIG[emoji]['name']}</b> 稀有度：\n"
-                for item_name, num in group:
-                    items_display += f"   • <b>{item_name}</b> x{num}\n"
-
-    # 计算总物品数
-    total_items = len(raw_items.split(",")) if raw_items.strip() else 0
-
-    # 显示VIP状态
-    vip_badge = " 👑" if u.is_vip else ""
-
-    txt = (
-        f"🎒 <b>【 魔 法 少 女 的 背 包 】</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>主人：</b> {u.emby_account}{vip_badge}\n"
-        f"💎 <b>魔力结晶：</b> {u.points} MP\n"
-        f"⚔️ <b>战力值：</b> {u.attack or 10}\n"
-        f"📊 <b>藏品总数：</b> {total_items} 件\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📦 <b>魔法道具收藏：</b>{items_display}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>\"快去 /poster 填充你的宝库吧喵！(｡•̀ᴗ-)✧\"</i>"
-    )
-
-    # 快捷按钮
-    keyboard = [
-        [
-            InlineKeyboardButton("🎰 抽盲盒", callback_data="bag_gacha"),
-            InlineKeyboardButton("🔮 占卜", callback_data="bag_tarot")
-        ],
-        [InlineKeyboardButton("📜 个人档案", callback_data="bag_me")]
-    ]
-
-    await reply_with_auto_delete(
-        msg,
-        txt,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    session.close()
 
 
 async def bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

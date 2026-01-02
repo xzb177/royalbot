@@ -7,7 +7,7 @@
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 from datetime import datetime, date
 import random
@@ -87,37 +87,38 @@ async def wheel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not u or not u.emby_account:
-        session.close()
-        await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>")
-        return
+        if not u or not u.emby_account:
+            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>")
+            return
 
-    today = get_today()
-    spin_date = u.last_wheel_date
-    if spin_date:
-        last_date = spin_date.date() if isinstance(spin_date, datetime) else spin_date
-    else:
-        last_date = None
+        today = get_today()
+        spin_date = u.last_wheel_date
+        if spin_date:
+            last_date = spin_date.date() if isinstance(spin_date, datetime) else spin_date
+        else:
+            last_date = None
 
-    # 检查今日已转次数
-    spun_today = last_date and last_date >= today
-    free_spins = 0
-    if not spun_today:
-        free_spins = 1
-    if u.is_vip:
-        free_spins += 1  # VIP额外一次
+        # 检查今日已转次数
+        spun_today = last_date and last_date >= today
+        free_spins = 0
+        if not spun_today:
+            free_spins = 1
+        if u.is_vip:
+            free_spins += 1  # VIP额外一次
 
-    vip_badge = " 👑" if u.is_vip else ""
-    spin_emoji = "🎡" if not spun_today else "✅"
+        vip_badge = " 👑" if u.is_vip else ""
+        spin_emoji = "🎡" if not spun_today else "✅"
+        emby_account = u.emby_account
+        points = u.points
 
     txt = (
         f"🎡 <b>【 幸 运 大 转 盘 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>玩家：</b> {u.emby_account}{vip_badge}\n"
-        f"💰 <b>钱包：</b> {u.points} MP\n"
+        f"👤 <b>玩家：</b> {emby_account}{vip_badge}\n"
+        f"💰 <b>钱包：</b> {points} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
     )
 
@@ -146,7 +147,6 @@ async def wheel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons.append([InlineKeyboardButton("🎲 抽一次", callback_data="wheel_spin")])
 
     await msg.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None)
-    session.close()
 
 
 async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,84 +155,86 @@ async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     user_id = query.from_user.id
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not u or not u.emby_account:
-        await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
-        session.close()
-        return
+        if not u or not u.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
 
-    today = get_today()
-    spin_date = u.last_wheel_date
-    if spin_date:
-        last_date = spin_date.date() if isinstance(spin_date, datetime) else spin_date
-    else:
-        last_date = None
+        today = get_today()
+        spin_date = u.last_wheel_date
+        if spin_date:
+            last_date = spin_date.date() if isinstance(spin_date, datetime) else spin_date
+        else:
+            last_date = None
 
-    # 检查是否还能抽
-    spun_today = last_date and last_date >= today
+        # 检查是否还能抽
+        spun_today = last_date and last_date >= today
 
-    # VIP检查
-    can_spin = not spun_today
-    if u.is_vip and spun_today and u.wheel_spins_today < 2:
-        can_spin = True
+        # VIP检查
+        can_spin = not spun_today
+        if u.is_vip and spun_today and u.wheel_spins_today < 2:
+            can_spin = True
 
-    if not can_spin:
-        await query.edit_message_text(
-            "⏰ <b>今日次数已用完</b>\n\n明天再来吧！",
-            parse_mode='HTML'
-        )
-        session.close()
-        return
+        if not can_spin:
+            await query.edit_message_text(
+                "⏰ <b>今日次数已用完</b>\n\n明天再来吧！",
+                parse_mode='HTML'
+            )
+            return
 
-    # 记录抽奖次数
-    if not spun_today:
-        u.wheel_spins_today = 1
-        u.last_wheel_date = datetime.now()
-    else:
-        u.wheel_spins_today = (u.wheel_spins_today or 1) + 1
+        # 记录抽奖次数
+        if not spun_today:
+            u.wheel_spins_today = 1
+            u.last_wheel_date = datetime.now()
+        else:
+            u.wheel_spins_today = (u.wheel_spins_today or 1) + 1
 
-    # 转动转盘
-    result = spin_wheel(u)
+        # 转动转盘
+        result = spin_wheel(u)
 
-    # 发放奖励
-    reward_msg = ""
-    if result["type"] == "points":
-        u.points += result["value"]
-        reward_msg = f"+{result['value']} MP"
-    elif result["type"] == "lucky":
-        u.lucky_boost = True
-        reward_msg = "幸运草已激活"
-    elif result["type"] == "shield":
-        u.shield_active = True
-        reward_msg = "防御卷轴已激活"
-    elif result["type"] == "tarot":
-        u.extra_tarot = (u.extra_tarot or 0) + 1
-        reward_msg = "塔罗券+1"
-    elif result["type"] == "gacha":
-        u.extra_gacha = (u.extra_gacha or 0) + 1
-        reward_msg = "盲盒券+1"
-    elif result["type"] == "forge_small":
-        u.free_forges = (u.free_forges or 0) + 1
-        reward_msg = "锻造券+1"
-    elif result["type"] == "forge_big":
-        u.free_forges_big = (u.free_forges_big or 0) + 1
-        reward_msg = "高级锻造券+1"
-    elif result["type"] == "nothing":
-        reward_msg = "再接再厉..."
+        # 发放奖励
+        reward_msg = ""
+        if result["type"] == "points":
+            u.points += result["value"]
+            reward_msg = f"+{result['value']} MP"
+        elif result["type"] == "lucky":
+            u.lucky_boost = True
+            reward_msg = "幸运草已激活"
+        elif result["type"] == "shield":
+            u.shield_active = True
+            reward_msg = "防御卷轴已激活"
+        elif result["type"] == "tarot":
+            u.extra_tarot = (u.extra_tarot or 0) + 1
+            reward_msg = "塔罗券+1"
+        elif result["type"] == "gacha":
+            u.extra_gacha = (u.extra_gacha or 0) + 1
+            reward_msg = "盲盒券+1"
+        elif result["type"] == "forge_small":
+            u.free_forges = (u.free_forges or 0) + 1
+            reward_msg = "锻造券+1"
+        elif result["type"] == "forge_big":
+            u.free_forges_big = (u.free_forges_big or 0) + 1
+            reward_msg = "高级锻造券+1"
+        elif result["type"] == "nothing":
+            reward_msg = "再接再厉..."
 
-    session.commit()
-    session.close()
+        session.commit()
 
-    # 构建结果消息
-    is_jackpot = result["is_jackpot"]
+        # 保存需要在session关闭后使用的值
+        points = u.points
+        is_jackpot = result["is_jackpot"]
+        result_emoji = result["emoji"]
+        result_name = result["name"]
+
+    # 构建结果消息（在with块外）
     title = "🌠 <b>【 大 奖 ！】</b>" if is_jackpot else "🎡 <b>【 抽 奖 结 果 】</b>"
 
     txt = (
         f"{title}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"{result['emoji']} <b>获得：</b> {result['name']}\n"
+        f"{result_emoji} <b>获得：</b> {result_name}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
     )
 
@@ -240,7 +242,7 @@ async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         txt += f"🎉 <b>恭喜！欧气满满！</b>\n\n"
 
     txt += (
-        f"💰 <b>当前余额：</b> {u.points} MP\n"
+        f"💰 <b>当前余额：</b> {points} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"<i>\"明天再来哦！\"</i>"
     )
@@ -259,31 +261,32 @@ async def wheel_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     user_id = query.from_user.id
-    session = Session()
-    u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not u or not u.emby_account:
-        await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
-        session.close()
-        return
+        if not u or not u.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
 
-    today = get_today()
-    spin_date = u.last_wheel_date
-    if spin_date:
-        last_date = spin_date.date() if isinstance(spin_date, datetime) else spin_date
-    else:
-        last_date = None
+        today = get_today()
+        spin_date = u.last_wheel_date
+        if spin_date:
+            last_date = spin_date.date() if isinstance(spin_date, datetime) else spin_date
+        else:
+            last_date = None
 
-    spun_today = last_date and last_date >= today
-    free_spins = 0 if spun_today else (2 if u.is_vip else 1)
+        spun_today = last_date and last_date >= today
+        free_spins = 0 if spun_today else (2 if u.is_vip else 1)
 
-    vip_badge = " 👑" if u.is_vip else ""
+        vip_badge = " 👑" if u.is_vip else ""
+        emby_account = u.emby_account
+        points = u.points
 
     txt = (
         f"🎡 <b>【 幸 运 大 转 盘 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>玩家：</b> {u.emby_account}{vip_badge}\n"
-        f"💰 <b>钱包：</b> {u.points} MP\n"
+        f"👤 <b>玩家：</b> {emby_account}{vip_badge}\n"
+        f"💰 <b>钱包：</b> {points} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
     )
 
@@ -296,7 +299,6 @@ async def wheel_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not spun_today:
         buttons.append([InlineKeyboardButton("🎡 开始抽奖", callback_data="wheel_spin")])
 
-    session.close()
 
     try:
         await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None, parse_mode='HTML')

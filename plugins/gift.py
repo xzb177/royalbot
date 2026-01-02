@@ -7,7 +7,7 @@
 import logging
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 
 logger = logging.getLogger(__name__)
@@ -29,122 +29,128 @@ async def gift_mp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    session = Session()
     try:
-        sender = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        with get_session() as session:
+            sender = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-        if not sender or not sender.emby_account:
-            await reply_with_auto_delete(msg, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
-            return
+            if not sender or not sender.emby_account:
+                await reply_with_auto_delete(msg, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
+                return
 
-        # 解析参数
-        target_user = None
-        amount = 0
+            # 解析参数
+            target_user = None
+            amount = 0
 
-        # 方法1：回复某人并输入 /gift 数量
-        if msg.reply_to_message and msg.reply_to_message.from_user:
-            target_user = msg.reply_to_message.from_user
-            if context.args:
+            # 方法1：回复某人并输入 /gift 数量
+            if msg.reply_to_message and msg.reply_to_message.from_user:
+                target_user = msg.reply_to_message.from_user
+                if context.args:
+                    try:
+                        amount = int(context.args[0])
+                        if amount <= 0:
+                            raise ValueError
+                    except ValueError:
+                        await reply_with_auto_delete(msg, "⚠️ <b>魔力数值无效喵！</b>\n请输入正整数，如：<code>/gift 100</code>")
+                        return
+            # 方法2：直接 /gift @username 数量
+            elif len(context.args) >= 2:
+                username_input = context.args[0]
+                if username_input.startswith("@"):
+                    username_input = username_input[1:]
                 try:
-                    amount = int(context.args[0])
+                    amount = int(context.args[1])
                     if amount <= 0:
                         raise ValueError
                 except ValueError:
-                    await reply_with_auto_delete(msg, "⚠️ <b>魔力数值无效喵！</b>\n请输入正整数，如：<code>/gift 100</code>")
+                    await reply_with_auto_delete(msg, "⚠️ <b>魔力数值无效喵！</b>\n请输入正整数，如：<code>/gift @username 100</code>")
                     return
-        # 方法2：直接 /gift @username 数量
-        elif len(context.args) >= 2:
-            username_input = context.args[0]
-            if username_input.startswith("@"):
-                username_input = username_input[1:]
-            try:
-                amount = int(context.args[1])
-                if amount <= 0:
-                    raise ValueError
-            except ValueError:
-                await reply_with_auto_delete(msg, "⚠️ <b>魔力数值无效喵！</b>\n请输入正整数，如：<code>/gift @username 100</code>")
-                return
 
-            # 查找目标用户（先尝试 username 匹配）
-            all_users = session.query(UserBinding).filter(UserBinding.emby_account != None).all()
+                # 查找目标用户（先尝试 username 匹配）
+                all_users = session.query(UserBinding).filter(UserBinding.emby_account != None).all()
 
-            for u in all_users:
-                try:
-                    chat_member = await context.bot.get_chat_member(update.effective_chat.id, u.tg_id)
-                    if chat_member.user.username and chat_member.user.username.lower() == username_input.lower():
-                        target_user = chat_member.user
-                        break
-                except:
-                    continue
+                for u in all_users:
+                    try:
+                        chat_member = await context.bot.get_chat_member(update.effective_chat.id, u.tg_id)
+                        if chat_member.user.username and chat_member.user.username.lower() == username_input.lower():
+                            target_user = chat_member.user
+                            break
+                    except:
+                        continue
 
-            if not target_user:
+                if not target_user:
+                    await reply_with_auto_delete(
+                        msg,
+                        f"🔍 <b>【 找 不 到 目 标 】</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"无法找到用户 <b>@{username_input}</b>\n\n"
+                        f"<i>\"请确保对方也在本群并已绑定账号喵~(｡•́︿•̀｡)\"</i>"
+                    )
+                    return
+            else:
                 await reply_with_auto_delete(
                     msg,
-                    f"🔍 <b>【 找 不 到 目 标 】</b>\n"
+                    f"💝 <b>【 魔 力 转 赠 】</b>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"无法找到用户 <b>@{username_input}</b>\n\n"
-                    f"<i>\"请确保对方也在本群并已绑定账号喵~(｡•́︿•̀｡)\"</i>"
+                    f"<b>用法1：</b> 回复某人 <code>/gift 数量</code>\n"
+                    f"<b>用法2：</b> <code>/gift @username 数量</code>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>💡 见习魔法少女转赠需扣除 {int(GIFT_FEE_RATE*100)}% 手续费，VIP 免费喵~</i>"
                 )
                 return
-        else:
-            await reply_with_auto_delete(
-                msg,
-                f"💝 <b>【 魔 力 转 赠 】</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"<b>用法1：</b> 回复某人 <code>/gift 数量</code>\n"
-                f"<b>用法2：</b> <code>/gift @username 数量</code>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>💡 见习魔法少女转赠需扣除 {int(GIFT_FEE_RATE*100)}% 手续费，VIP 免费喵~</i>"
-            )
-            return
 
-        # 检查是否转给自己
-        if target_user.id == user_id:
-            await reply_with_auto_delete(
-                msg,
-                f"🚫 <b>【 不 能 转 给 自 己 】</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>\"想变富还是去签到吧喵！(｡•̀ᴗ-)✧\"</i>"
-            )
-            return
+            # 检查是否转给自己
+            if target_user.id == user_id:
+                await reply_with_auto_delete(
+                    msg,
+                    f"🚫 <b>【 不 能 转 给 自 己 】</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>\"想变富还是去签到吧喵！(｡•̀ᴗ-)✧\"</i>"
+                )
+                return
 
-        # 检查余额
-        if sender.points < amount:
-            await reply_with_auto_delete(
-                msg,
-                f"💸 <b>【 魔 力 不 足 】</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"钱包里只有 <b>{sender.points} MP</b>\n"
-                f"无法转赠 <b>{amount} MP</b> 喵~"
-            )
-            return
+            # 检查余额
+            if sender.points < amount:
+                sender_points = sender.points
+                await reply_with_auto_delete(
+                    msg,
+                    f"💸 <b>【 魔 力 不 足 】</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"钱包里只有 <b>{sender_points} MP</b>\n"
+                    f"无法转赠 <b>{amount} MP</b> 喵~"
+                )
+                return
 
-        # 计算手续费
-        fee = 0 if sender.is_vip else int(amount * GIFT_FEE_RATE)
-        actual_received = amount - fee
+            # 计算手续费
+            fee = 0 if sender.is_vip else int(amount * GIFT_FEE_RATE)
+            actual_received = amount - fee
 
-        # 查找接收者
-        receiver = session.query(UserBinding).filter_by(tg_id=target_user.id).first()
+            # 查找接收者
+            receiver = session.query(UserBinding).filter_by(tg_id=target_user.id).first()
 
-        if not receiver or not receiver.emby_account:
-            await reply_with_auto_delete(
-                msg,
-                f"💔 <b>【 对 方 未 契 约 】</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"{target_user.first_name} 还没有绑定账号\n"
-                f"无法接收魔力转赠喵~"
-            )
-            return
+            if not receiver or not receiver.emby_account:
+                await reply_with_auto_delete(
+                    msg,
+                    f"💔 <b>【 对 方 未 契 约 】</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"{target_user.first_name} 还没有绑定账号\n"
+                    f"无法接收魔力转赠喵~"
+                )
+                return
 
-        # 执行转账
-        sender.points -= amount
-        receiver.points += actual_received
-        await track_activity_wrapper(user_id, "gift")
-        session.commit()
+            # 执行转账
+            sender.points -= amount
+            receiver.points += actual_received
+            await track_activity_wrapper(user_id, "gift")
+            session.commit()
 
-        # 构建成功消息
-        target_name = target_user.first_name or target_user.username or receiver.emby_account
-        if sender.is_vip:
+            # 在session关闭前保存需要的值
+            is_vip = sender.is_vip
+            sender_emby = sender.emby_account
+            receiver_emby = receiver.emby_account
+
+        # 构建成功消息（在with块外）
+        target_name = target_user.first_name or target_user.username or receiver_emby_account
+        if is_vip:
             text = (
                 f"💝 <b>【 魔 力 转 赠 成 功 】</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
@@ -171,7 +177,7 @@ async def gift_mp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=target_user.id,
-                text=f"🎉 <b>【 收 到 魔 力 转 赠 】</b>\n\n{sender.emby_account} 向您转赠了 <b>{actual_received} MP</b>！",
+                text=f"🎉 <b>【 收 到 魔 力 转 赠 】</b>\n\n{sender_emby} 向您转赠了 <b>{actual_received} MP</b>！",
                 parse_mode='HTML'
             )
         except:
@@ -179,11 +185,8 @@ async def gift_mp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await reply_with_auto_delete(msg, text)
     except Exception as e:
-        session.rollback()
         logger.error(f"魔力转赠失败 - 用户ID: {user_id}, 错误: {e}", exc_info=True)
         await reply_with_auto_delete(msg, "⚠️ <b>转赠失败</b>\n\n魔法阵出错了...请稍后再试喵！")
-    finally:
-        session.close()
 
 
 def register(app):

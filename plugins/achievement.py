@@ -8,7 +8,7 @@
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
-from database import Session, UserBinding
+from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 from datetime import datetime
 
@@ -368,71 +368,69 @@ async def achievement_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not user or not user.emby_account:
-        session.close()
-        await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来~")
-        return
+        if not user or not user.emby_account:
+            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来~")
+            return
 
-    # 自动检查新成就
-    new_achievements = check_all_achievements(user, session)
-    if new_achievements:
-        session.commit()
+        # 自动检查新成就
+        new_achievements = check_all_achievements(user, session)
+        if new_achievements:
+            session.commit()
 
-    completed = set(user.achievements.split(",")) if user.achievements else set()
-    progress = get_achievement_progress(user)
-    titles = get_user_titles(user)
+        completed = set(user.achievements.split(",")) if user.achievements else set()
+        progress = get_achievement_progress(user)
+        titles = get_user_titles(user)
 
-    vip_badge = " 👑" if user.is_vip else ""
+        vip_badge = " 👑" if user.is_vip else ""
 
-    # 按分类显示
-    txt = (
-        f"🏆 <b>【 成 就 殿 堂 】</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>冒险者：</b> {user.emby_account}{vip_badge}\n"
-        f"📊 <b>完成度：</b> {progress['done']}/{progress['total']} ({progress['percentage']}%)\n"
-    )
+        # 按分类显示
+        txt = (
+            f"🏆 <b>【 成 就 殿 堂 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>冒险者：</b> {user.emby_account}{vip_badge}\n"
+            f"📊 <b>完成度：</b> {progress['done']}/{progress['total']} ({progress['percentage']}%)\n"
+        )
 
-    # 显示已解锁称号
-    if titles:
-        txt += f"🏅 <b>已解锁称号：</b> {len(titles)} 个\n"
+        # 显示已解锁称号
+        if titles:
+            txt += f"🏅 <b>已解锁称号：</b> {len(titles)} 个\n"
 
-    txt += "━━━━━━━━━━━━━━━━━━\n"
-
-    # 新成就提示
-    if new_achievements:
-        txt += f"\n🎉 <b>恭喜解锁新成就！</b>\n"
-        for ach in new_achievements:
-            txt += f"   {ach['emoji']} {ach['name']} (+{ach['reward']}MP)\n"
         txt += "━━━━━━━━━━━━━━━━━━\n"
 
-    # 按分类展示成就
-    categories = {}
-    for ach_id, ach in ACHIEVEMENTS.items():
-        cat = ach["category"]
-        if cat not in categories:
-            categories[cat] = []
-        is_done = ach_id in completed
-        status = "✅" if is_done else "⬜"
-        reward_txt = f"+{ach['reward']}MP" if ach['reward'] > 0 else "🏅称号"
-        title_txt = f" [{ach.get('title', '')}]" if ach.get('title') else ""
-        categories[cat].append(f"{status} {ach['emoji']} {ach['name']}{title_txt} ({reward_txt})")
+        # 新成就提示
+        if new_achievements:
+            txt += f"\n🎉 <b>恭喜解锁新成就！</b>\n"
+            for ach in new_achievements:
+                txt += f"   {ach['emoji']} {ach['name']} (+{ach['reward']}MP)\n"
+            txt += "━━━━━━━━━━━━━━━━━━\n"
 
-    for cat, items in categories.items():
-        cat_progress = progress['by_category'].get(cat, {})
-        cat_done = cat_progress.get('done', 0)
-        cat_total = cat_progress.get('total', 0)
-        txt += f"\n📌 <b>{cat}</b> ({cat_done}/{cat_total})\n"
-        txt += "\n".join(items) + "\n"
+        # 按分类展示成就
+        categories = {}
+        for ach_id, ach in ACHIEVEMENTS.items():
+            cat = ach["category"]
+            if cat not in categories:
+                categories[cat] = []
+            is_done = ach_id in completed
+            status = "✅" if is_done else "⬜"
+            reward_txt = f"+{ach['reward']}MP" if ach['reward'] > 0 else "🏅称号"
+            title_txt = f" [{ach.get('title', '')}]" if ach.get('title') else ""
+            categories[cat].append(f"{status} {ach['emoji']} {ach['name']}{title_txt} ({reward_txt})")
 
-    txt += "━━━━━━━━━━━━━━━━━━\n"
-    txt += "<i>\"完成成就获得MP奖励和专属称号喵~(｡•̀ᴗ-)✧\"</i>"
+        for cat, items in categories.items():
+            cat_progress = progress['by_category'].get(cat, {})
+            cat_done = cat_progress.get('done', 0)
+            cat_total = cat_progress.get('total', 0)
+            txt += f"\n📌 <b>{cat}</b> ({cat_done}/{cat_total})\n"
+            txt += "\n".join(items) + "\n"
 
-    # 成就页面不使用自毁（保留查看）
-    await msg.reply_html(txt, disable_web_page_preview=True)
-    session.close()
+        txt += "━━━━━━━━━━━━━━━━━━\n"
+        txt += "<i>\"完成成就获得MP奖励和专属称号喵~(｡•̀ᴗ-)✧\"</i>"
+
+        # 成就页面不使用自毁（保留查看）
+        await msg.reply_html(txt, disable_web_page_preview=True)
 
 
 async def achievement_titles(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -442,35 +440,33 @@ async def achievement_titles(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     user_id = update.effective_user.id
-    session = Session()
-    user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-    if not user or not user.emby_account:
-        session.close()
-        await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>")
-        return
+        if not user or not user.emby_account:
+            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>")
+            return
 
-    titles = get_user_titles(user)
-    vip_badge = " 👑" if user.is_vip else ""
+        titles = get_user_titles(user)
+        vip_badge = " 👑" if user.is_vip else ""
 
-    txt = (
-        f"🏅 <b>【 荣 耀 称 号 殿 堂 】</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>冒险者：</b> {user.emby_account}{vip_badge}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-    )
+        txt = (
+            f"🏅 <b>【 荣 耀 称 号 殿 堂 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>冒险者：</b> {user.emby_account}{vip_badge}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+        )
 
-    if titles:
-        for i, title in enumerate(titles, 1):
-            txt += f"{i}. 🎖️ {title}\n"
-        txt += f"\n🎊 <b>共 {len(titles)} 个称号</b>\n"
-    else:
-        txt += "💫 <i>还没有获得任何称号喵~\n去完成成就解锁吧！(｡•̀ᴗ-)✧</i>\n"
+        if titles:
+            for i, title in enumerate(titles, 1):
+                txt += f"{i}. 🎖️ {title}\n"
+            txt += f"\n🎊 <b>共 {len(titles)} 个称号</b>\n"
+        else:
+            txt += "💫 <i>还没有获得任何称号喵~\n去完成成就解锁吧！(｡•̀ᴗ-)✧</i>\n"
 
-    txt += "━━━━━━━━━━━━━━━━━━\n"
+        txt += "━━━━━━━━━━━━━━━━━━\n"
 
-    await reply_with_auto_delete(msg, txt)
-    session.close()
+        await reply_with_auto_delete(msg, txt)
 
 
 # ==========================================
