@@ -37,6 +37,12 @@ class Config:
     EMBY_API_KEY = os.getenv("EMBY_API_KEY", "")
     EMBY_LIBRARY_WHITELIST = os.getenv("EMBY_LIBRARY_WHITELIST", "")
 
+    # Database
+    DB_TYPE = os.getenv("DB_TYPE", "sqlite")  # sqlite / postgresql / mysql
+    DB_PATH = os.getenv("DB_PATH", "data/magic.db")
+    DB_URL = os.getenv("DB_URL", f"sqlite:///{DB_PATH}")
+    DB_ECHO = os.getenv("DB_ECHO", "false").lower() == "true"  # SQL日志开关
+
     @classmethod
     def validate(cls):
         if not cls.BOT_TOKEN:

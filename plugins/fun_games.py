@@ -653,20 +653,34 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 win_name = duel_data["opponent_name"]
                 lose_name = duel_data["challenger_name"]
 
+            # === 连胜系统 ===
+            winner_streak = (winner.win_streak or 0) + 1
+            winner.win_streak = winner_streak
+            winner.last_win_streak_date = datetime.now()
+
+            # 败者重置连胜
+            loser.win_streak = 0
+            loser.lose_streak = (loser.lose_streak or 0) + 1
+
             # 资金转移
             winner.points += bet
             winner.win += 1
             winner.lose_streak = 0  # 重置连败
 
+            # 财富追踪：胜者获得赌注
+            winner.total_earned = (winner.total_earned or 0) + bet
+
             # 连败安慰机制
-            lose_streak = (loser.lose_streak or 0) + 1
-            loser.lose_streak = lose_streak
+            lose_streak = loser.lose_streak
             loser.lost += 1
 
             # 败者安慰奖（赌注的10%，上限20）
             consolation = min(bet // 10, 20)
             consolation_extra = 30 if lose_streak >= 3 else 0  # 连败3次以上额外安慰
             total_consolation = consolation + consolation_extra
+
+            # 败者财富追踪
+            loser.total_earned = (loser.total_earned or 0) + total_consolation
 
             # 检查防御卷轴效果（失败不掉钱）
             shield_protected = False
@@ -679,6 +693,8 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # 无防御卷轴：扣除赌注，但返还安慰奖
                 loser.points -= bet
                 loser.points += total_consolation
+                # 财富追踪：败者失去赌注（净消费）
+                loser.total_spent = (loser.total_spent or 0) + bet
 
             # 胜者可能获得战力提升（小概率）
             power_up = 0
@@ -686,7 +702,27 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 power_up = random.randint(1, 3)
                 winner.attack = (winner.attack or 0) + power_up
 
+            # 连胜额外奖励
+            streak_bonus = 0
+            streak_bonus_text = ""
+            if winner_streak >= 5:
+                streak_bonus = winner_streak * 5  # 每连胜场数×5 MP
+                winner.points += streak_bonus
+                winner.total_earned = (winner.total_earned or 0) + streak_bonus
+
             session.commit()
+
+            # 检查成就（决斗相关）
+            from plugins.achievement import check_and_award_achievement
+            achievement_msgs = []
+            for ach_id in ["duel_1", "duel_10", "duel_50", "duel_100", "win_streak_5", "win_streak_10",
+                           "power_100", "power_500", "power_1000", "power_5000", "power_10000"]:
+                result = check_and_award_achievement(winner, ach_id, session)
+                if result["new"]:
+                    achievement_msgs.append(f"🎉 {result['emoji']} {result['name']} (+{result['reward']}MP)")
+
+            if achievement_msgs:
+                session.commit()
 
             # 检查悬赏任务进度（决斗类型）
             await check_duel_bounty_progress(update, context, winner.tg_id)
@@ -717,9 +753,12 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"{battle_text}\n"
                 f"👑 <b>胜者：</b> {win_name}\n"
-                f"💰 <b>收益：</b> +{bet} MP{power_up_text}\n\n"
+                f"🔥 <b>连胜：</b> {winner_streak} 场！\n"
+                f"💰 <b>收益：</b> +{bet} MP{power_up_text}"
+                + (f"\n🎁 <b>连胜奖励：</b> +{streak_bonus} MP！" if streak_bonus > 0 else "") + "\n\n"
                 f"{lose_text}\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
+                + ("\n🏆 " + "\n".join(achievement_msgs[:2]) + "\n" if achievement_msgs else "")
+                + "━━━━━━━━━━━━━━━━━━\n"
                 f"<i>\"多么精彩的战斗！看板娘看得热血沸腾喵！\"</i>",
                 parse_mode='HTML'
             )
