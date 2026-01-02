@@ -31,6 +31,7 @@ PUBLIC_COMMANDS = [
 
 ADMIN_COMMANDS = [
     ("admin", "🛡️ 控制台"), ("say", "🗣️ 全员广播"),
+    ("announce", "📢 群组公告"),
     ("sync", "🔄 刷新菜单配置")
 ]
 
