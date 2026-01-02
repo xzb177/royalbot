@@ -455,25 +455,34 @@ async def duel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 保存消息ID用于后续更新
     context.bot_data["duels"][duel_id]["message_id"] = sent_msg.message_id
+    # 调试日志
+    print(f"[DEBUG] 决斗发起成功: duel_id={duel_id}, challenger={challenger.id}, opponent={opponent.id}")
 
 
 async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理决斗按钮回调"""
     query = update.callback_query
-    await query.answer()
+    # 调试日志
+    print(f"[DEBUG] 决斗回调触发: data={query.data}, from={query.from_user.id}")
+
+    # 先 answer 防止按钮转圈
+    try:
+        await query.answer()
+    except Exception:
+        pass
 
     # 解析: duel_accept_xxxxx 或 duel_reject_xxxxx
     parts = query.data.split('_')
     # parts[0]="duel", parts[1]="accept/reject", parts[2]=duel_id
     if len(parts) < 3:
-        await query.edit_message_text("⚠️ <b>决斗数据错误喵！</b>")
+        await query.edit_message_text("⚠️ <b>决斗数据错误喵！</b>", parse_mode='HTML')
         return
 
     action = parts[1]  # "accept" 或 "reject"
     duel_id = parts[2]  # 决斗ID
 
     if not context.bot_data or "duels" not in context.bot_data or duel_id not in context.bot_data["duels"]:
-        await query.edit_message_text("⏰ <b>这场决斗已经过期啦喵！</b>\n\n<i>\"可能被取消了，或者服务器重启了喵~\"</i>")
+        await query.edit_message_text("⏰ <b>这场决斗已经过期啦喵！</b>\n\n<i>\"可能被取消了，或者服务器重启了喵~\"</i>", parse_mode='HTML')
         return
 
     duel_data = context.bot_data["duels"][duel_id]
@@ -481,7 +490,7 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 检查决斗是否过期 (60秒，从30秒延长)
     if (datetime.now() - duel_data["created_at"]).total_seconds() > 60:
-        await query.edit_message_text("⏰ <b>决斗已超时喵！</b>\n\n<i>\"犹豫就会败北...\"</i>")
+        await query.edit_message_text("⏰ <b>决斗已超时喵！</b>\n\n<i>\"犹豫就会败北...\"</i>", parse_mode='HTML')
         del context.bot_data["duels"][duel_id]
         return
 
@@ -499,23 +508,26 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 consolation = max(5, duel_data["bet"] // 10)  # 10% 安慰奖
                 u_cha.points += consolation
                 session.commit()
-                await query.edit_message_html(
+                await query.edit_message_text(
                     f"🏳️ <b>决斗取消</b>\n\n"
                     f"{user.first_name or '应战者'} 选择了认怂...\n"
                     f"💰 <b>{duel_data['challenger_name']}</b> 获得 <code>{consolation}</code> MP 安慰奖\n"
-                    f"<i>\"没有人受伤，就是有点没面子喵...\"</i>"
+                    f"<i>\"没有人受伤，就是有点没面子喵...\"</i>",
+                    parse_mode='HTML'
                 )
             else:
-                await query.edit_message_html(
+                await query.edit_message_text(
                     f"🏳️ <b>决斗取消</b>\n\n"
                     f"{user.first_name or '应战者'} 选择了认怂...\n"
-                    f"<i>\"没有人受伤，就是有点没面子喵...\"</i>"
+                    f"<i>\"没有人受伤，就是有点没面子喵...\"</i>",
+                    parse_mode='HTML'
                 )
         except:
-            await query.edit_message_html(
+            await query.edit_message_text(
                 f"🏳️ <b>决斗取消</b>\n\n"
                 f"{user.first_name or '应战者'} 选择了认怂...\n"
-                f"<i>\"没有人受伤，就是有点没面子喵...\"</i>"
+                f"<i>\"没有人受伤，就是有点没面子喵...\"</i>",
+                parse_mode='HTML'
             )
         finally:
             session.close()
@@ -534,20 +546,22 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # 再次检查余额
             if not u_opp or u_opp.points < bet:
-                await query.edit_message_html(
+                await query.edit_message_text(
                     f"💸 <b>决斗取消</b>\n\n"
                     f"{user.first_name or '应战者'} 的钱不够付赌注喵！\n"
-                    f"<i>\"好尴尬啊...\"</i>"
+                    f"<i>\"好尴尬啊...\"</i>",
+                    parse_mode='HTML'
                 )
                 del context.bot_data["duels"][duel_id]
                 session.close()
                 return
 
             if not u_cha or u_cha.points < bet:
-                await query.edit_message_html(
+                await query.edit_message_text(
                     f"💸 <b>决斗取消</b>\n\n"
                     f"{duel_data['challenger_name']} 的钱已经花光了喵！\n"
-                    f"<i>\"发起者破产了，决斗无效！\"</i>"
+                    f"<i>\"发起者破产了，决斗无效！\"</i>",
+                    parse_mode='HTML'
                 )
                 del context.bot_data["duels"][duel_id]
                 session.close()
@@ -627,7 +641,7 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 lose_text = f"💀 <b>败者：</b> {lose_name} 失去 {bet} MP"
 
-            await query.edit_message_html(
+            await query.edit_message_text(
                 f"⚔️ <b>【 决 斗 结 束 】</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"{battle_text}\n"
@@ -635,13 +649,15 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 <b>收益：</b> +{bet} MP{power_up_text}\n\n"
                 f"{lose_text}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>\"多么精彩的战斗！看板娘看得热血沸腾喵！\"</i>"
+                f"<i>\"多么精彩的战斗！看板娘看得热血沸腾喵！\"</i>",
+                parse_mode='HTML'
             )
             del context.bot_data["duels"][duel_id]
         except Exception as e:
             session.rollback()
-            await query.edit_message_html(
-                f"⚠️ <b>决斗出错</b>\n\n<i>\"魔法阵不稳定...决斗已取消，请稍后再试喵！\"</i>"
+            await query.edit_message_text(
+                f"⚠️ <b>决斗出错</b>\n\n<i>\"魔法阵不稳定...决斗已取消，请稍后再试喵！\"</i>",
+                parse_mode='HTML'
             )
             if duel_id in context.bot_data.get("duels", {}):
                 del context.bot_data["duels"][duel_id]

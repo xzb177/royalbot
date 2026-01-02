@@ -1069,3 +1069,112 @@ ALTER TABLE bindings ADD COLUMN free_forges_big INTEGER DEFAULT 0;
 - **仓库**: `git@github.com:xzb177/royalbot.git`
 
 ---
+
+## 2026-01-01 全局统一消息自毁功能（私聊除外）
+
+### 1. 搞定了啥
+- **统一所有插件使用 `reply_with_auto_delete()`**
+- **群组消息自动30秒后删除**（万人群优化）
+- **私聊消息保留不删除**（自动检测 chat.type）
+- **带交互按钮的消息保留**（菜单、决斗邀请、商店等需要用户操作）
+
+### 2. 关键信息
+**修改的文件（6个）：**
+- `plugins/bag.py` - 背包界面
+- `plugins/me.py` - 个人档案错误提示
+- `plugins/mission.py` - 聊天挖矿奖励通知
+- `plugins/start_menu.py` - 帮助文本
+- `plugins/vip_apply.py` - VIP申请流程错误提示
+
+**保留原样的消息（不自动删除）：**
+- 带交互按钮的菜单（如主菜单、VIP中心、商店等）
+- 决斗邀请消息（需要对方点击按钮）
+- 管理面板消息
+- 悬赏任务消息（需要后续更新进度）
+
+**自动删除的消息：**
+- 纯通知消息（签到、绑定、银行操作等）
+- 错误提示消息
+- 聊天挖矿奖励通知
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 1715994）
+- 在万人群测试消息自毁效果
+
+### 4. Git 提交
+- **提交 ID**: `67f9b9c`
+- **仓库**: `git@github.com:xzb177/royalbot.git`
+
+---
+
+## 2026-01-02 修复决斗超时消息 HTML 解析乱码
+
+### 1. 搞定了啥
+- **修复决斗超时消息乱码**：将 `edit_message_text` 改为 `edit_message_html`
+- **修复三处 HTML 解析问题**：
+  - 决斗数据错误提示（第469行）
+  - 决斗过期提示（第476行）
+  - 决斗超时提示（第484行）
+
+### 2. 关键信息
+**问题原因：**
+```python
+# 修复前（错误 - HTML 标签不解析）
+await query.edit_message_text("⏰ <b>决斗已超时喵！</b>\n\n<i>\"犹豫就会败北...\"</i>")
+
+# 修复后（正确 - 使用 HTML 解析）
+await query.edit_message_html("⏰ <b>决斗已超时喵！</b>\n\n<i>\"犹豫就会败北...\"</i>")
+```
+
+**修改的文件：**
+- `plugins/fun_games.py:469,476,484` - 三处 HTML 解析修复
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 1728694）
+- 测试决斗功能确认"接受挑战"按钮正常工作
+
+---
+
+## 2026-01-02 修复决斗回调 AttributeError
+
+### 1. 搞定了啥
+- **修复 CallbackQuery 不支持 edit_message_html**：改用 `edit_message_text(parse_mode='HTML')`
+- **修复10处 HTML 解析调用**：所有决斗相关消息都正确使用 HTML 解析
+
+### 2. 关键信息
+**问题原因：**
+`CallbackQuery` 对象没有 `edit_message_html()` 方法，需要使用 `edit_message_text(parse_mode='HTML')`。
+
+**错误日志：**
+```
+AttributeError: 'CallbackQuery' object has no attribute 'edit_message_html'.
+Did you mean: 'edit_message_text'?
+```
+
+**修改的文件：**
+- `plugins/fun_games.py` - 全部10处调用修复：
+  - 第478行：决斗数据错误
+  - 第485行：决斗过期
+  - 第493行：决斗超时
+  - 第511-517行：认怂-有用户
+  - 第519-524行：认怂-无用户
+  - 第526-531行：认怂-异常
+  - 第549-554行：接受-余额不足
+  - 第560-565行：接受-发起者破产
+  - 第644-654行：决斗结束
+  - 第658-661行：决斗出错
+
+**修复代码：**
+```python
+# 修复前（错误）
+await query.edit_message_html("⏰ <b>决斗已超时喵！</b>...")
+
+# 修复后（正确）
+await query.edit_message_text("⏰ <b>决斗已超时喵！</b>...", parse_mode='HTML')
+```
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 1736094）
+- 测试决斗功能确认"接受挑战"和"认怂"按钮都正常工作
+
+---
