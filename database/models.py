@@ -135,6 +135,9 @@ class UserBinding(Base):
     # === 新手加成系统 ===
     registered_date = Column(DateTime)  # 注册日期（用于计算新手期）
 
+    # === 武器收藏系统 ===
+    weapon_collection = Column(Text, default="")  # 收藏的武器列表（逗号分隔）
+
 
 class RedPacket(Base):
     """红包模型"""

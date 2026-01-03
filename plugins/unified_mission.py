@@ -313,6 +313,7 @@ async def mission_main(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: 
             )
 
             buttons = [
+                [InlineKeyboardButton("🔄 刷新任务 (20MP)", callback_data="mission_refresh_daily")],
                 [InlineKeyboardButton("📜 悬赏任务", callback_data="mission_tab_bounty")],
             ]
 
@@ -761,6 +762,62 @@ async def mission_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await post_bounty(fake_update, context)
         # 刷新界面
         await mission_main(update, context, "bounty")
+    elif data == "mission_refresh_daily":
+        # 刷新每日任务（花费MP）
+        user_id = query.from_user.id
+        refresh_cost = 20  # 刷新消耗20MP
+
+        with get_session() as session:
+            u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+            if not u or not u.emby_account:
+                await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+                return
+
+            # 检查魔力
+            if u.points < refresh_cost:
+                await query.edit_message_text(
+                    f"💸 <b>【 魔 力 不 足 】</b>\n\n"
+                    f"刷新任务需要 <b>{refresh_cost} MP</b>\n"
+                    f"当前余额：{u.points} MP",
+                    parse_mode='HTML'
+                )
+                return
+
+            # 扣除消耗
+            u.points -= refresh_cost
+
+            # 重新生成每日任务
+            selected_tasks = []
+            # 1. 聊天任务（必选）
+            selected_tasks.append(random.choice(TASK_POOL[0]))
+
+            # 2. 确保至少1个免费任务
+            free_tasks = [t for t in TASK_POOL[1] if t in TASK_TIERS["free"]]
+            selected_tasks.append(random.choice(free_tasks))
+
+            # 3. 第三个任务随机（可以是任何任务）
+            remaining = [t for t in TASK_POOL[1] if t not in selected_tasks]
+            selected_tasks.append(random.choice(remaining))
+
+            u.task_date = datetime.now()
+            u.daily_tasks = ",".join(selected_tasks)
+            u.task_progress = "0,0,0"
+
+            session.commit()
+
+            remaining_points = u.points
+
+        # 刷新成功
+        await query.edit_message_text(
+            f"🔄 <b>【 任 务 已 刷 新 】</b>\n\n"
+            f"💰 消耗：{refresh_cost} MP\n"
+            f"💎 余额：{remaining_points} MP\n\n"
+            f"<i>\"新任务已生成，加油完成喵~(｡•̀ᴗ-)✧\"</i>",
+            parse_mode='HTML'
+        )
+        # 延迟后刷新界面
+        await mission_main(update, context, "daily")
 
 
 # ==========================================

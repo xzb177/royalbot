@@ -4,13 +4,14 @@
 - VIP用户1.5倍收益
 - 成就系统
 - 缔结魔法契约（绑定Emby账号）
+- 签到日历视图
 - 全面正面反馈增强
 """
-from telegram import Update
-from telegram.ext import CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding, create_or_update_user
-from datetime import datetime, timedelta
-from utils import reply_with_auto_delete, get_unbound_message
+from datetime import datetime, timedelta, date
+from utils import reply_with_auto_delete, get_unbound_message, edit_with_auto_delete
 from plugins.feedback_utils import progress_bar, get_crit_effect, success_burst, random_loading
 from plugins.quotes import get_checkin_greeting, get_milestone_congrats, random_cute_emoji
 from plugins.lucky_events import calculate_lucky_reward, check_random_drop
@@ -402,7 +403,111 @@ async def bind(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await tutorial_start(update, context)
 
 
+async def checkin_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """签到日历视图 - 显示本月签到情况"""
+    msg = update.effective_message
+    query = getattr(update, "callback_query", None)
+
+    if not msg and not query:
+        return
+
+    user_id = update.effective_user.id
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+        if not user or not user.emby_account:
+            target = query.edit_message_text if query else msg.reply_html
+            await target("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        # 获取当前月份信息
+        now = datetime.now()
+        year = now.year
+        month = now.month
+        today = now.day
+
+        # 获取用户注册日期（用于显示从什么时候开始签到）
+        reg_date = user.registered_date
+        if reg_date:
+            reg_day = reg_date.day if reg_date.month == month and reg_date.year == year else None
+        else:
+            reg_day = None
+
+        # 获取最后签到日期
+        last_checkin = user.last_checkin
+        last_checkin_day = last_checkin.day if last_checkin and last_checkin.month == month and last_checkin.year == year else None
+
+        # 获取连续签到天数
+        consecutive = user.consecutive_checkin or 0
+        total_days = user.total_checkin_days or 0
+
+        # 构建日历
+        import calendar
+        cal = calendar.monthcalendar(year, month)
+
+        # 构建日历视图
+        calendar_text = f"📅 <b>【 签 到 日 历 】</b>\n"
+        calendar_text += f"━━━━━━━━━━━━━━━━━━\n"
+        calendar_text += f"👤 <b>{user.emby_account}</b>\n"
+        calendar_text += f"📆 <b>{year}年{month}月</b>\n"
+        calendar_text += f"🔥 连续签到：<b>{consecutive}</b> 天\n"
+        calendar_text += f"📊 累计签到：<b>{total_days}</b> 天\n"
+        calendar_text += f"━━━━━━━━━━━━━━━━━━\n"
+        calendar_text += f"  一  二  三  四  五  六  日\n"
+
+        for week in cal:
+            week_text = ""
+            for day in week:
+                if day == 0:
+                    week_text += "    "
+                else:
+                    # 判断签到状态
+                    if day == last_checkin_day:
+                        # 今日已签到
+                        week_text += " ✅ "
+                    elif day < last_checkin_day or (reg_day and day >= reg_day):
+                        # 可能的签到日期（简化处理）
+                        if day == today:
+                            week_text += f" <b>{day:2}</b> "
+                        else:
+                            week_text += f" {day:2} "
+                    else:
+                        # 未注册或未来日期
+                        if day == today:
+                            week_text += f" ❓{day:2} "
+                        else:
+                            week_text += f" •  "
+            calendar_text += week_text + "\n"
+
+        calendar_text += f"━━━━━━━━━━━━━━━━━━\n"
+        calendar_text += f"✅ 今日已签到  |  ❓ 今日未签到\n"
+        calendar_text += f"━━━━━━━━━━━━━━━━━━\n"
+        calendar_text += f"<i>\"坚持签到，奖励丰厚喵~(｡•̀ᴗ-)✧\"</i>"
+
+        buttons = [[InlineKeyboardButton("🔙 返回", callback_data="calendar_back")]]
+
+        if query:
+            await query.edit_message_text(
+                calendar_text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode='HTML'
+            )
+        else:
+            await msg.reply_html(calendar_text, reply_markup=InlineKeyboardMarkup(buttons))
+
+
+async def calendar_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """返回日历主界面"""
+    query = update.callback_query
+    await query.answer()
+    await checkin_calendar(update, context)
+
+
 def register(app):
     app.add_handler(CommandHandler("checkin", checkin))
     app.add_handler(CommandHandler("daily", checkin))
+    app.add_handler(CommandHandler("calendar", checkin_calendar))
+    app.add_handler(CommandHandler("checkin_calendar", checkin_calendar))
     app.add_handler(CommandHandler("bind", bind))
+    app.add_handler(CallbackQueryHandler(calendar_back_callback, pattern="^calendar_back$"))

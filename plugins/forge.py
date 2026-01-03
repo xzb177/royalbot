@@ -364,6 +364,21 @@ async def forge_result_callback(update: Update, context: ContextTypes.DEFAULT_TY
             u.attack = base_atk
             await track_activity_wrapper(user.id, "forge")
 
+            # [新增] 自动收藏高稀有度武器 (SR及以上)
+            collection_msg = ""
+            if rarity_tier >= 2:  # SR 或 SSR
+                # 添加到收藏
+                current_collection = u.weapon_collection if u.weapon_collection else ""
+                if current_collection:
+                    u.weapon_collection = current_collection + "," + new_name
+                else:
+                    u.weapon_collection = new_name
+
+                if rarity_tier == 3:  # SSR
+                    collection_msg = "\n🏆 <b>已自动收藏到武器馆！</b>"
+                else:  # SR
+                    collection_msg = "\n✨ <b>已收藏到武器馆</b>"
+
             # [新增] 检查战力成就
             achievement_msgs = []
             from plugins.achievement import check_and_award_achievement
@@ -435,6 +450,7 @@ async def forge_result_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 f"\n".join(result_lines) + "\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"{achievement_text}"
+                f"{collection_msg}\n"
                 f"<i>{quote}</i>"
             )
         else:  # discard
@@ -490,11 +506,121 @@ async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_with_auto_delete(msg, txt)
 
 
+async def weapon_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """查看武器收藏"""
+    msg = update.effective_message
+    query = getattr(update, "callback_query", None)
+
+    if not msg and not query:
+        return
+
+    user_id = update.effective_user.id
+
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+        if not u or not u.emby_account:
+            target = query.edit_message_text if query else msg.reply_html
+            await target("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        # 获取收藏的武器
+        raw_collection = u.weapon_collection if u.weapon_collection else ""
+
+        if not raw_collection.strip():
+            collection_display = "🍃 <i>还没有收藏任何武器...\n去锻造一些精品武器吧喵~(｡･ω･｡)</i>"
+        else:
+            # 解析收藏列表
+            weapons = raw_collection.split(",") if raw_collection else []
+            # 按稀有度排序
+            from collections import Counter
+            weapon_counts = Counter(weapons)
+
+            # 按稀有度分组
+            rarity_groups = {
+                "🌈": [],  # SSR 神器
+                "🟡": [],  # SR 史诗
+                "🟣": [],  # R+ 精锐
+                "🔵": [],  # R 精良
+                "⚪": [],  # R 普通
+            }
+
+            for weapon_name, count in weapon_counts.items():
+                # 判断稀有度
+                if any(k in weapon_name for k in ["神话", "终焉", "创世"]):
+                    rarity_groups["🌈"].append((weapon_name, count))
+                elif any(k in weapon_name for k in ["传说", "真·", "极·"]):
+                    rarity_groups["🟡"].append((weapon_name, count))
+                elif any(k in weapon_name for k in ["稀有的", "史诗的"]):
+                    rarity_groups["🟣"].append((weapon_name, count))
+                elif "精良的" in weapon_name:
+                    rarity_groups["🔵"].append((weapon_name, count))
+                else:
+                    rarity_groups["⚪"].append((weapon_name, count))
+
+            # 构建显示文本
+            collection_display = ""
+            for emoji, group in rarity_groups.items():
+                if group:
+                    collection_display += f"\n{emoji} <b>"
+                    if emoji == "🌈":
+                        collection_display += "SSR 神器</b>："
+                    elif emoji == "🟡":
+                        collection_display += "SR 史诗</b>："
+                    elif emoji == "🟣":
+                        collection_display += "R+ 精锐</b>："
+                    elif emoji == "🔵":
+                        collection_display += "R 精良</b>："
+                    else:
+                        collection_display += "R 普通</b>："
+
+                    # 最多显示3个
+                    if len(group) > 3:
+                        display_items = group[:3]
+                        collection_display += f" {', '.join([f'{n}×{c}' for n, c in display_items])} 等{len(group)}种"
+                    else:
+                        collection_display += f" {', '.join([f'{n}×{c}' for n, c in group])}"
+
+        vip_badge = " 👑" if u.is_vip else ""
+
+        txt = (
+            f"🏆 <b>【 武 器 收 藏 馆 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>{u.emby_account}</b>{vip_badge}\n"
+            f"📊 收藏数：{len(raw_collection.split(',')) if raw_collection else 0} 件\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{collection_display}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<i>\"💡 SR及以上稀有度武器会自动收藏哦~\"</i>"
+        )
+
+        buttons = [[InlineKeyboardButton("🔙 返回", callback_data="collection_back")]]
+
+        if query:
+            await query.edit_message_text(
+                txt,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode='HTML'
+            )
+        else:
+            await msg.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+
+
+async def collection_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """返回收藏界面"""
+    query = update.callback_query
+    await query.answer()
+    await weapon_collection(update, context)
+
+
 def register(app):
     """注册插件处理器"""
     app.add_handler(CommandHandler("forge", forge_start))
     app.add_handler(CommandHandler("weapon", forge_start))
     app.add_handler(CommandHandler("myweapon", my_weapon))
+    app.add_handler(CommandHandler("collection", weapon_collection))
+    app.add_handler(CommandHandler("weapon_collection", weapon_collection))
     # 锻造回调
     app.add_handler(CallbackQueryHandler(forge_start, pattern="^forge_start$"))
     app.add_handler(CallbackQueryHandler(forge_result_callback, pattern=r"^forge_(equip|discard)_.{8}$"))
+    app.add_handler(CallbackQueryHandler(collection_back_callback, pattern="^collection_back$"))

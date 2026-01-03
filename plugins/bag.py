@@ -134,12 +134,13 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>\"快去 /poster 填充宝库喵~(｡•̀ᴗ-)✧\"</i>"
         )
 
-        # 快捷按钮
+        # 快捷按钮（添加物品详情按钮）
         keyboard = [
             [
                 InlineKeyboardButton("🎰 抽盲盒", callback_data="bag_gacha"),
                 InlineKeyboardButton("📜 个人档案", callback_data="bag_me")
-            ]
+            ],
+            [InlineKeyboardButton("📋 物品详情", callback_data="bag_detail")]
         ]
 
         await reply_with_auto_delete(
@@ -175,6 +176,127 @@ async def bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>\"了解自己的实力，才能变得更强喵！(｡･ω･｡)\"</i>",
             parse_mode='HTML'
         )
+    elif query.data == "bag_detail":
+        # 显示物品详情
+        user_id = query.from_user.id
+        with get_session() as session:
+            u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+            if not u or not u.emby_account:
+                await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+                return
+
+            raw_items = u.items if u.items else ""
+
+            if not raw_items.strip():
+                await edit_with_auto_delete(
+                    query,
+                    "📋 <b>【 物 品 详 情 】</b>\n\n"
+                    "🍃 背包空空如也...",
+                    parse_mode='HTML'
+                )
+                return
+
+            # 统计物品数量
+            items_list = [item.strip() for item in raw_items.split(",") if item.strip()]
+            counts = Counter(items_list)
+
+            # 按稀有度排序
+            sorted_items = sorted(counts.items(), key=lambda x: get_item_rarity(x[0])[1])
+
+            # 构建详情文本
+            detail_text = "📋 <b>【 物 品 详 情 】</b>\n"
+            detail_text += "━━━━━━━━━━━━━━━━━━\n"
+
+            for item_name, num in sorted_items:
+                emoji, _ = get_item_rarity(item_name)
+                # 提取物品名（去掉稀有度标记）
+                clean_name = item_name
+                for marker in ["(UR)", "(SSR)", "(SR)", "(R)", "(N)", "(CURSED)"]:
+                    clean_name = clean_name.replace(marker, "").strip()
+
+                detail_text += f"{emoji} <b>{clean_name}</b> × {num}\n"
+
+            detail_text += "━━━━━━━━━━━━━━━━━━\n"
+            detail_text += f"📊 总计: {len(items_list)} 件物品\n"
+            detail_text += "━━━━━━━━━━━━━━━━━━\n"
+            detail_text += "<i>💡 UR>SSR>SR>R>N 稀有度排序</i>"
+
+            buttons = [[InlineKeyboardButton("🔙 返回背包", callback_data="bag_back")]]
+
+            await query.edit_message_text(
+                detail_text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode='HTML'
+            )
+    elif query.data == "bag_back":
+        # 返回背包界面
+        user_id = query.from_user.id
+        with get_session() as session:
+            u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+            if not u or not u.emby_account:
+                await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+                return
+
+            raw_items = u.items if u.items else ""
+
+            if not raw_items.strip():
+                items_display = "🍃 <i>包包空空的...去抽点盲盒吧喵~(｡･ω･｡)</i>"
+            else:
+                items_list = [item.strip() for item in raw_items.split(",") if item.strip()]
+                counts = Counter(items_list)
+
+                rarity_groups = {
+                    "🌈": [], "🟡": [], "🟣": [], "🔵": [], "⚪": [], "💀": [],
+                }
+
+                for item_name, num in counts.items():
+                    emoji, _ = get_item_rarity(item_name)
+                    if emoji not in rarity_groups:
+                        rarity_groups[emoji] = []
+                    rarity_groups[emoji].append((item_name, num))
+
+                items_display = ""
+                for emoji in ["🌈", "🟡", "🟣", "🔵", "⚪", "💀"]:
+                    group = rarity_groups[emoji]
+                    if group:
+                        rarity_name = "CURSED" if emoji == "💀" else RARITY_CONFIG[emoji]['name']
+                        items_display += f"\n{emoji} <b>{rarity_name}</b>："
+                        if len(group) > 3:
+                            display_items = group[:3]
+                            items_display += f" <b>{', '.join([f'{n}×{c}' for _, n, c in [(item, num, counts[item]) for item, num in display_items]])}</b>"
+                            items_display += f" <i>等{len(group)}种</i>"
+                        else:
+                            items_display += f" <b>{', '.join([f'{n}×{c}' for n, c in group])}</b>"
+
+            total_items = len(raw_items.split(",")) if raw_items.strip() else 0
+            vip_badge = " 👑" if u.is_vip else ""
+
+            txt = (
+                f"🎒 <b>【 背 包 】</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>{u.emby_account}</b>{vip_badge} | 💎 {u.points} MP\n"
+                f"⚔️ 战力: {u.attack or 10} | 📊 {total_items}件\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"📦 <b>收藏</b>{items_display}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"<i>\"快去 /poster 填充宝库喵~(｡•̀ᴗ-)✧\"</i>"
+            )
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("🎰 抽盲盒", callback_data="bag_gacha"),
+                    InlineKeyboardButton("📜 个人档案", callback_data="bag_me")
+                ],
+                [InlineKeyboardButton("📋 物品详情", callback_data="bag_detail")]
+            ]
+
+            await query.edit_message_text(
+                txt,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='HTML'
+            )
 
 
 def register(app):

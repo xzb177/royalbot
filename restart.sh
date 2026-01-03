@@ -1,37 +1,50 @@
 #!/bin/bash
-# RoyalBot Docker 重启脚本
-# ⚠️ 必须通过 Docker 容器运行，禁止直接运行
+# RoyalBot 重启脚本
+# 使用 docker-compose 管理
 
 cd /root/royalbot
 
-echo "🔄 RoyalBot Docker 重启中..."
+echo "🔄 RoyalBot 重启中..."
 
-# 停止并删除旧容器
-docker stop royalbot 2>/dev/null
-docker rm royalbot 2>/dev/null
+# 使用 docker compose v2
+docker compose down 2>/dev/null
 
-# 重新构建镜像（可选，加快速度可注释掉）
-# docker build -t royalbot-royalbot:latest . > /dev/null 2>&1
+# 重新构建和启动
+docker compose up -d --build
 
-# 启动新容器
-docker run -d \
-  --name royalbot \
-  --restart unless-stopped \
-  --network host \
-  -e TZ=Asia/Shanghai \
-  -e PYTHONUNBUFFERED=1 \
-  -v /root/royalbot/bot.log:/app/bot.log \
-  royalbot-royalbot:latest
+# 等待数据库启动
+echo "⏳ 等待数据库启动..."
+sleep 5
 
-# 等待启动
+# 等待数据库健康检查
+echo "⏳ 等待数据库健康检查..."
+for i in {1..30}; do
+    if docker exec royalbot-db pg_isready -U royalbot -d royalbot &>/dev/null; then
+        echo "✅ 数据库已就绪"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "❌ 数据库启动超时"
+        docker logs royalbot-db --tail 20
+        exit 1
+    fi
+    sleep 1
+done
+
+# 等待 bot 启动
+echo "⏳ 等待 RoyalBot 启动..."
 sleep 3
 
 # 验证启动状态
 if docker ps | grep -q royalbot; then
     echo "✅ RoyalBot 容器启动成功"
-    docker logs royalbot --tail 5
+    docker logs royalbot --tail 10
 else
     echo "❌ 启动失败，请检查日志:"
     docker logs royalbot
     exit 1
 fi
+
+echo ""
+echo "📊 数据库状态:"
+docker exec royalbot-db psql -U royalbot -d royalbot -c "SELECT version();" 2>/dev/null | head -3

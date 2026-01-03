@@ -85,6 +85,7 @@ RESONANCE_RESULTS = {
         "chance": 0.39,  # 39%
         "rewards": {
             "intimacy": (1, 5),
+            "points": (5, 10),  # N档保底返还5-10MP
             "bonus_desc": [
                 "🌱 她正在认真练习魔法...",
                 "🌿 「Master，看我学会的新魔法！」",
@@ -94,12 +95,17 @@ RESONANCE_RESULTS = {
     }
 }
 
-# 特殊事件（小概率触发）
+# 特殊事件（小概率触发）- 全部改为正面事件
 SPECIAL_EVENTS = [
-    {"name": "💀 诅咒降临", "desc": "哎呀...不小心触发了反噬！好感度 -1", "effect": "curse"},
     {"name": "🎀 惊喜礼物", "desc": "她偷偷准备了一份礼物！获得锻造券×1", "effect": "gift"},
     {"name": "💫 星辰暴击", "desc": "星辰之力爆发！好感度 ×2！", "effect": "crit"},
+    {"name": "🌟 双重眷顾", "desc": "今天的感觉特别好！好感度+10，MP+20！", "effect": "double"},
 ]
+
+# 灵魂共鸣概率说明
+RESONANCE_PROBABILITY = """💡 <b>稀有度概率</b>: UR 1% | SSR 5% | SR 15% | R 40% | N 39%
+💫 <b>特殊事件</b>: 5% 概率触发惊喜效果"""
+
 
 # 共感台词库（不同稀有度）
 RESONANCE_LINES = {
@@ -181,17 +187,18 @@ async def do_resonance(user_id: int) -> dict:
     intimacy_gain = random.randint(*rewards.get("intimacy", (1, 5)))
     points_gain = random.randint(*rewards.get("points", (0, 0))) if "points" in rewards else 0
 
-    # 特殊事件处理
+    # 特殊事件处理（全部正面事件）
     event_bonus = ""
     if special_event:
-        if special_event["effect"] == "curse":
-            intimacy_gain = -1
-            event_bonus = f"\n💀 {special_event['desc']}"
-        elif special_event["effect"] == "gift":
+        if special_event["effect"] == "gift":
             event_bonus = f"\n🎁 {special_event['desc']}"
         elif special_event["effect"] == "crit":
             intimacy_gain *= 2
             event_bonus = f"\n💫 {special_event['desc']}"
+        elif special_event["effect"] == "double":
+            intimacy_gain += 10
+            points_gain += 20
+            event_bonus = f"\n🌟 {special_event['desc']}"
 
     # 随机 bonus 描述
     if not event_bonus and "bonus_desc" in rewards:
@@ -393,11 +400,13 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💍 <b>契约等级：</b> <code>{love}</code>\n"
                 f"💫 <b>共鸣称号：</b> {resonance_title}\n"
                 f"📊 <b>共鸣次数：</b> {resonance_count} 次\n\n"
+                f"{RESONANCE_PROBABILITY}\n\n"
             )
             buttons = [
                 [InlineKeyboardButton(f"💎 VIP宝箱 {chest_status}", callback_data="chest_open_from_me"),
                  InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance")],
-                [InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge")]
+                [InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge"),
+                 InlineKeyboardButton("❓ 帮助", callback_data="me_help")]
             ]
         # 普通版
         else:
@@ -417,10 +426,12 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎒 <b>持有魔力：</b> {points} MP\n"
                 f"💓 <b>好感度：</b> {love}\n"
                 f"💫 <b>共鸣次数：</b> {resonance_count} 次\n\n"
+                f"{RESONANCE_PROBABILITY}\n\n"
             )
             buttons = [
                 [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance"),
-                 InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip")]
+                 InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip")],
+                [InlineKeyboardButton("❓ 帮助", callback_data="me_help")]
             ]
 
         keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]]
@@ -673,6 +684,51 @@ async def chest_from_me_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
 
 
+async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理帮助按钮回调"""
+    query = update.callback_query
+    await query.answer()
+
+    help_text = (
+        f"📖 <b>【 系 统 帮 助 】</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"💠 <b>:: 灵 魂 共 鸣 ::</b>\n"
+        f"💫 与看板娘进行心灵交流，提升好感度！\n"
+        f"• VIP消耗20MP，普通用户50MP\n"
+        f"• UR(1%) SSR(5%) SR(15%) R(40%) N(39%)\n"
+        f"• N档保底返还5-10MP，不会亏本\n"
+        f"• 5%概率触发特殊惊喜效果\n\n"
+        f"💠 <b>:: 共 鸣 称 号 ::</b>\n"
+        f"• 10次: 💚 初识·魔法学徒\n"
+        f"• 50次: 💕 友情·青梅竹马\n"
+        f"• 100次: 💗 眷恋·亲密知己\n"
+        f"• 500次: 💫 永恒·灵魂伴侣\n"
+        f"• 1000次: 🌌 宿命·星之眷属\n\n"
+        f"💠 <b>:: 位 阶 系 统 ::</b>\n"
+        f"• 身价 = 钱包 + 金库 + 战力×10 + 好感度\n"
+        f"• 达到一定数值可升级位阶\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>\"还有其他问题吗？(｡•̀ᴗ-)✧\"</i>"
+    )
+
+    buttons = [[InlineKeyboardButton("🔙 返回", callback_data="me_back")]]
+
+    await query.edit_message_text(
+        help_text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode='HTML'
+    )
+
+
+async def me_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """返回个人档案"""
+    query = update.callback_query
+    await query.answer()
+    # 重新调用 me_panel，需要构造一个 update
+    # 由于 me_panel 需要有效的 effective_message，我们直接发送
+    await me_panel(update, context)
+
+
 def register(app):
     app.add_handler(CommandHandler("me", me_panel))
     app.add_handler(CommandHandler("my", me_panel))
@@ -681,3 +737,5 @@ def register(app):
     app.add_handler(CallbackQueryHandler(forge_go_callback, pattern="^forge_go$"), group=-1)
     app.add_handler(CallbackQueryHandler(resonance_callback, pattern="^me_resonance$"), group=-1)
     app.add_handler(CallbackQueryHandler(chest_from_me_callback, pattern="^chest_open_from_me$"), group=-1)
+    app.add_handler(CallbackQueryHandler(help_callback, pattern="^me_help$"), group=-1)
+    app.add_handler(CallbackQueryHandler(me_back_callback, pattern="^me_back$"), group=-1)
