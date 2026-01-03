@@ -412,7 +412,9 @@ async def cmd_push_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'push_id': push_id,
             'claimed_users': set(),
             'created_at': datetime.now(),
-            'is_manual_push': True
+            'is_manual_push': True,
+            'original_caption': caption,
+            'claim_list': []
         }
 
         await reply_with_auto_delete(msg, "✅ <b>推送成功！</b>\n已自动开启互动挖矿喵~")
@@ -671,7 +673,9 @@ async def emby_push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             'push_id': push_id,
             'claimed_users': set(),
             'created_at': datetime.now(),
-            'is_manual_push': True
+            'is_manual_push': True,
+            'original_caption': caption,
+            'claim_list': []
         }
 
         # 标记为已推送
@@ -774,7 +778,9 @@ async def auto_emby_check(context: CallbackContext):
                     'push_id': push_id,
                     'claimed_users': set(),
                     'created_at': datetime.now(),
-                    'is_emby_push': True
+                    'is_emby_push': True,
+                    'original_caption': text_msg,
+                    'claim_list': []
                 }
 
                 # 标记为已推送（持久化到文件）

@@ -52,49 +52,56 @@ SHOP_ITEMS = {
         "desc": "额外一次塔罗占卜机会",
         "price": 50,
         "vip_price": 25,
-        "emoji": "🔮"
+        "emoji": "🔮",
+        "category": "fortune"
     },
     "gacha": {
         "name": "🎰 盲盒券",
         "desc": "抽取一次魔法盲盒",
         "price": 100,
         "vip_price": 50,
-        "emoji": "🎰"
+        "emoji": "🎰",
+        "category": "fortune"
     },
     "forge_small": {
         "name": "⚒️ 锻造锤(小)",
         "desc": "免费锻造一次",
         "price": 50,
         "vip_price": 25,
-        "emoji": "⚒️"
+        "emoji": "⚒️",
+        "category": "forge"
     },
     "forge_big": {
         "name": "⚒️ 锻造锤(大)",
         "desc": "免费锻造+稀有度UP",
         "price": 500,
         "vip_price": 250,
-        "emoji": "⚒️"
+        "emoji": "⚒️",
+        "category": "forge"
     },
     "lucky": {
         "name": "🍀 幸运草",
         "desc": "下次签到暴击率+50%",
         "price": 30,
         "vip_price": 15,
-        "emoji": "🍀"
+        "emoji": "🍀",
+        "category": "boost"
     },
     "energy": {
         "name": "⚡ 能量药水",
         "desc": "恢复300MP",
         "price": 150,
         "vip_price": 75,
-        "emoji": "⚡"
+        "emoji": "⚡",
+        "category": "boost"
     },
     "shield": {
         "name": "🛡️ 防御卷轴",
         "desc": "下次决斗失败不掉钱",
         "price": 80,
         "vip_price": 40,
-        "emoji": "🛡️"
+        "emoji": "🛡️",
+        "category": "boost"
     },
     "box": {
         "name": "🎁 神秘宝箱",
@@ -102,7 +109,37 @@ SHOP_ITEMS = {
         "price": 100,
         "vip_price": 50,
         "emoji": "🎁",
+        "category": "special",
         "daily_limit": 5  # 每日限购5次（普通用户3次，VIP5次）
+    },
+}
+
+# 商店分类配置
+SHOP_CATEGORIES = {
+    "all": {
+        "name": "全部商品",
+        "emoji": "🛒",
+        "desc": "查看所有商品"
+    },
+    "fortune": {
+        "name": "命运占卜",
+        "emoji": "🔮",
+        "desc": "塔罗券、盲盒券"
+    },
+    "forge": {
+        "name": "锻造工具",
+        "emoji": "⚒️",
+        "desc": "锻造锤、高级锻造"
+    },
+    "boost": {
+        "name": "增益道具",
+        "emoji": "⚡",
+        "desc": "幸运草、能量药水、防御卷轴"
+    },
+    "special": {
+        "name": "特殊商品",
+        "emoji": "🎁",
+        "desc": "神秘宝箱等限定商品"
     },
 }
 
@@ -116,12 +153,9 @@ BOX_PROBABILITY = {
 }
 
 
-async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "all"):
+    """显示商店主页（支持分类）"""
     query = getattr(update, "callback_query", None)
-    msg = update.effective_message
-    if not msg:
-        return
-    """显示商店主页（精简但带商品说明）"""
     msg = update.effective_message
     if not msg:
         return
@@ -142,17 +176,31 @@ async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vip_badge = " 👑" if u.is_vip else ""
         discount = "5折" if u.is_vip else "原价"
 
-        # 商店界面 - 精简但包含商品名和简短描述
+        # 获取当前分类信息
+        cat_info = SHOP_CATEGORIES.get(category, SHOP_CATEGORIES["all"])
+
+        # 商店界面
         txt = (
             f"🛒 <b>【 魔 法 · 商 店 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>{u.emby_account}</b>{vip_badge} | 💎 {u.points} MP\n"
             f"🏷️ 折扣: {discount}\n"
             f"━━━━━━━━━━━━━━━━━━\n"
+            f"📂 <b>当前分类：</b> {cat_info['emoji']} {cat_info['name']}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
         )
 
-        # 商品列表：商品名 + 简短描述 + 价格
-        for item_id, item in SHOP_ITEMS.items():
+        # 根据分类过滤商品
+        if category == "all":
+            filtered_items = SHOP_ITEMS
+        else:
+            filtered_items = {
+                k: v for k, v in SHOP_ITEMS.items()
+                if v.get("category") == category
+            }
+
+        # 商品列表
+        for item_id, item in filtered_items.items():
             price = item["vip_price"] if u.is_vip else item["price"]
             # 提取商品名（去掉emoji）
             name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
@@ -163,10 +211,20 @@ async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += f"━━━━━━━━━━━━━━━━━━\n"
         txt += f"<i>\"点击下方按钮购买~(｡•̀ᴗ-)✧\"</i>"
 
-        # 按钮（2x4布局）
+        # 分类按钮（第一行）
+        cat_buttons = []
+        for cat_id, cat_data in SHOP_CATEGORIES.items():
+            # 当前分类用不同样式
+            prefix = "✅" if cat_id == category else ""
+            cat_buttons.append(InlineKeyboardButton(
+                f"{prefix} {cat_data['emoji']}",
+                callback_data=f"shop_cat_{cat_id}"
+            ))
+
+        # 商品按钮（仅显示当前分类的商品）
         buttons = []
         row = []
-        for item_id, item in SHOP_ITEMS.items():
+        for item_id, item in filtered_items.items():
             price = item["vip_price"] if u.is_vip else item["price"]
             # 按钮显示简短名称
             short_name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
@@ -179,7 +237,13 @@ async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if row:
             buttons.append(row)
 
-    await msg.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+        # 将分类按钮放在最前面
+        buttons.insert(0, cat_buttons)
+
+    if query:
+        await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
+    else:
+        await msg.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: str = None):
@@ -622,63 +686,21 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def shop_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """返回商店主页（精简但带商品说明）"""
+    """返回商店主页（支持分类）"""
+    query = update.callback_query
+    await query.answer()
+    # 调用 shop_main，默认显示全部商品
+    await shop_main(update, context, category="all")
+
+
+async def shop_category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理分类切换回调"""
     query = update.callback_query
     await query.answer()
 
-    user_id = query.from_user.id
-
-    with get_session() as session:
-        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
-
-        if not u or not u.emby_account:
-            await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
-            return
-
-        vip_badge = " 👑" if u.is_vip else ""
-        discount = "5折" if u.is_vip else "原价"
-
-        # 在session关闭前保存需要的值
-        user_account = u.emby_account
-        points = u.points
-        is_vip = u.is_vip
-
-    txt = (
-        f"🛒 <b>【 魔 法 · 商 店 】</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>{user_account}</b>{vip_badge} | 💎 {points} MP\n"
-        f"🏷️ 折扣: {discount}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-    )
-
-    # 商品列表：商品名 + 简短描述 + 价格
-    for item_id, item in SHOP_ITEMS.items():
-        price = item["vip_price"] if is_vip else item["price"]
-        # 提取商品名（去掉emoji）
-        name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
-        desc = item['desc']
-        txt += f"{item['emoji']} <b>{name}</b> — {desc}\n"
-        txt += f"   <i>💰 {price} MP</i>\n"
-
-    txt += f"━━━━━━━━━━━━━━━━━━\n"
-    txt += f"<i>\"点击下方按钮购买~(｡•̀ᴗ-)✧\"</i>"
-
-    buttons = []
-    row = []
-    for item_id, item in SHOP_ITEMS.items():
-        price = item["vip_price"] if is_vip else item["price"]
-        # 按钮显示简短名称
-        short_name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
-        # 截取前3个字
-        short_name = short_name[:3] if len(short_name) > 3 else short_name
-        row.append(InlineKeyboardButton(f"{item['emoji']} {short_name} {price}MP", callback_data=f"buy_{item_id}"))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-
-    await edit_with_auto_delete(query, txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
+    # 解析分类: shop_cat_all, shop_cat_fortune, etc.
+    category = query.data.replace("shop_cat_", "")
+    await shop_main(update, context, category=category)
 
 
 def register(app):
@@ -688,3 +710,4 @@ def register(app):
     app.add_handler(CommandHandler("buy", buy_item))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern=r"^buy_"))
     app.add_handler(CallbackQueryHandler(shop_home_callback, pattern=r"^shop_home$"))
+    app.add_handler(CallbackQueryHandler(shop_category_callback, pattern=r"^shop_cat_"))

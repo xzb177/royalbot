@@ -287,6 +287,85 @@ ACHIEVEMENTS = {
         "check": lambda u: u.attack >= 10000 if u.attack else False
     },
 
+    # === 战力突破成就 ===
+    "breakthrough_1": {
+        "name": "🌱 突破初窥",
+        "desc": "完成第1次战力突破",
+        "reward": 50,
+        "reward_type": "points",
+        "emoji": "🌱",
+        "category": "突破",
+        "check": lambda u: u.breakthrough_level >= 1 if u.breakthrough_level else False
+    },
+    "breakthrough_2": {
+        "name": "🌿 突破渐进",
+        "desc": "完成第2次战力突破",
+        "reward": 100,
+        "reward_type": "points",
+        "emoji": "🌿",
+        "category": "突破",
+        "check": lambda u: u.breakthrough_level >= 2 if u.breakthrough_level else False
+    },
+    "breakthrough_3": {
+        "name": "🔥 突破纯青",
+        "desc": "完成第3次战力突破",
+        "reward": 200,
+        "reward_type": "points",
+        "emoji": "🔥",
+        "category": "突破",
+        "title": "突破达人",
+        "check": lambda u: u.breakthrough_level >= 3 if u.breakthrough_level else False
+    },
+    "breakthrough_5": {
+        "name": "💫 突破入神",
+        "desc": "完成第5次战力突破",
+        "reward": 500,
+        "reward_type": "points",
+        "emoji": "💫",
+        "category": "突破",
+        "title": "大突破者",
+        "check": lambda u: u.breakthrough_level >= 5 if u.breakthrough_level else False
+    },
+    "breakthrough_7": {
+        "name": "✨ 突破超凡",
+        "desc": "完成第7次战力突破",
+        "reward": 1000,
+        "reward_type": "points",
+        "emoji": "✨",
+        "category": "突破",
+        "title": "超凡入圣",
+        "check": lambda u: u.breakthrough_level >= 7 if u.breakthrough_level else False
+    },
+    "breakthrough_10": {
+        "name": "🌈 突破虚空",
+        "desc": "完成第10次战力突破（满级）",
+        "reward": 5000,
+        "reward_type": "points",
+        "emoji": "🌈",
+        "category": "突破",
+        "title": "虚空主宰",
+        "check": lambda u: u.breakthrough_level >= 10 if u.breakthrough_level else False
+    },
+    "breakthrough_spent_10000": {
+        "name": "💸 突破豪客",
+        "desc": "突破累计消耗10000 MP",
+        "reward": 200,
+        "reward_type": "points",
+        "emoji": "💸",
+        "category": "突破",
+        "check": lambda u: u.total_mp_spent_breakthrough >= 10000 if u.total_mp_spent_breakthrough else False
+    },
+    "breakthrough_spent_50000": {
+        "name": "👑 突破至尊",
+        "desc": "突破累计消耗50000 MP",
+        "reward": 1000,
+        "reward_type": "points",
+        "emoji": "👑",
+        "category": "突破",
+        "title": "突破大亨",
+        "check": lambda u: u.total_mp_spent_breakthrough >= 50000 if u.total_mp_spent_breakthrough else False
+    },
+
     # === 铁匠成就 ===
     "forge_10": {
         "name": "⚒️ 打铁新手",
@@ -543,19 +622,47 @@ def check_and_award_achievement(user: UserBinding, achievement_id: str, session=
 
             if is_important:
                 vip_badge = " 👑" if user.is_vip else ""
-                txt = (
-                    f"🎊 <b>【 成 就 解 锁 】</b> 🎊\n"
-                    f"━━━━━━━━━━━━━━━━━━\n"
-                    f"👤 恭喜 <b>{user.emby_account}</b>{vip_badge}\n"
-                    f"━━━━━━━━━━━━━━━━━━\n"
-                    f"{achievement['emoji']} <b>{achievement['name']}</b>\n"
-                )
+                emoji = achievement.get("emoji", "🏆")
+                ach_name = achievement.get("name", "未知成就")
+
+                # 根据成就重要性选择不同的消息样式
+                if reward >= 500 or achievement.get("title"):
+                    # 高级成就 - 华丽弹窗样式
+                    txt = (
+                        f"✨✨✨✨✨✨✨✨✨✨✨\n"
+                        f"🎊🎊 <b>【 ⚜️ 成 就 解 锁 ⚜️ 】</b> 🎊🎊\n"
+                        f"✨✨✨✨✨✨✨✨✨✨✨\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"     🌟 {emoji} <b>{ach_name}</b> 🌟\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"👤 恭喜 <b>{user.emby_account}</b>{vip_badge}\n"
+                        f"     解锁了这个荣耀成就！\n"
+                    )
+                elif reward >= 100:
+                    # 中级成就 - 标准弹窗样式
+                    txt = (
+                        f"🎉🎉 <b>【 成 就 解 锁 】</b> 🎉🎉\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"{emoji} <b>{ach_name}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"👤 恭喜 <b>{user.emby_account}</b>{vip_badge}\n"
+                        f"     解锁成就奖励！\n"
+                    )
+                else:
+                    # 普通成就
+                    txt = (
+                        f"🎊 <b>【 成 就 解 锁 】</b> 🎊\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"👤 恭喜 <b>{user.emby_account}</b>{vip_badge}\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"{emoji} <b>{ach_name}</b>\n"
+                    )
 
                 if achievement.get("title"):
-                    txt += f"🏅 获得称号：<b>{achievement['title']}</b>\n"
+                    txt += f"\n🏅 获得称号：<b>{achievement['title']}</b>\n"
 
                 if reward > 0:
-                    txt += f"💰 奖励：<b>+{reward} MP</b>\n"
+                    txt += f"\n💰 奖励：<b>+{reward} MP</b>\n"
 
                 txt += "━━━━━━━━━━━━━━━━━━\n"
                 txt += "<i>\"太厉害了！大家快来膜拜喵！(≧◡≦)\"</i>"

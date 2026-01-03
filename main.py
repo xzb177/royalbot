@@ -10,6 +10,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import Config
+from config.commands import BOT_COMMANDS
 
 # 加载配置
 Config.validate()
@@ -44,6 +45,13 @@ async def post_init(application: ApplicationBuilder) -> None:
         "duel_stats": {},  # 决斗统计 {user_id: {"wins": int, "losses": int, "streak": int}}
     }
     print("✅ bot_data 初始化完成")
+
+    # 设置 Bot 命令菜单
+    try:
+        await application.bot.set_my_commands(BOT_COMMANDS)
+        print(f"✅ 已设置 {len(BOT_COMMANDS)} 个命令菜单")
+    except Exception as e:
+        print(f"⚠️ 设置命令菜单失败: {e}")
 
 if __name__ == '__main__':
     print("🪄 正在唤醒云海看板娘...")

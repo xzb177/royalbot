@@ -341,6 +341,7 @@ async def forge_result_callback(update: Update, context: ContextTypes.DEFAULT_TY
     new_name = forge_data["new_name"]
     base_atk = forge_data["base_atk"]
     rank = forge_data["rank"]
+    rarity_tier = forge_data["rarity_tier"]
     used_ticket = forge_data["used_ticket"]
     cost = forge_data["cost"]
     remaining = forge_data["remaining"]

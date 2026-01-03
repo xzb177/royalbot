@@ -296,43 +296,10 @@ async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    txt = (
-        "📖 <b>【 魔 法 指 南 】</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
+    """帮助手册 - 使用统一的命令配置"""
+    from config.commands import format_help_text
 
-        "🔗 <b>基础魔法：</b>\n"
-        "• <code>/bind</code> — 缔结魔法契约 (必做!)\n"
-        "• <code>/daily</code> — 每日签到领魔力\n"
-        "• <code>/me</code> — 查看魔法少女档案\n\n"
-
-        "📋 <b>每日任务：</b>\n"
-        "• <code>/tasks</code> — 查看每日任务\n"
-        "• <code>/wheel</code> — 幸运转盘抽奖\n"
-        "• <code>/active</code> — 查看活跃度\n"
-        "• <code>/rank</code> — 活跃排行榜\n\n"
-
-        "🎬 <b>影音挖矿：</b>\n"
-        "• <code>/bind</code> — 绑定账号(必需)\n"
-        "• <code>/watch_status</code> — 查看待领取奖励\n"
-        "• <code>/weekly_watch</code> — 观影排行榜\n\n"
-
-        "💰 <b>皇家金库：</b>\n"
-        "• <code>/bank</code> — 打开魔法金库\n"
-        "• <code>/shop</code> — 魔法商店\n"
-        "• <code>/gift</code> — 转赠给小伙伴\n\n"
-
-        "🔮 <b>娱乐时光：</b>\n"
-        "• <code>/poster</code> — 命运盲盒\n"
-        "• <code>/airdrop</code> — 幸运空投(管理员)\n\n"
-
-        "⚔️ <b>战斗竞技：</b>\n"
-        "• <code>/duel</code> — 魔法少女决斗\n"
-        "• <code>/hall</code> — 战力排行榜\n"
-        "• <code>/tower</code> — 通天塔挑战\n\n"
-
-        "━━━━━━━━━━━━━━━━━━\n"
-        "<i>\"遇到困难的话...随时召唤看板娘哦！(｡•̀ᴗ-)✧\"</i>"
-    )
+    txt = format_help_text()
     msg = update.effective_message
     if msg:
         await reply_with_auto_delete(msg, txt)
@@ -836,43 +803,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 帮助手册
     elif data == "help_manual":
-        txt = (
-            "📖 <b>【 魔 法 指 南 】</b>\n"
-            "━━━━━━━━━━━━━━━━━━\n\n"
-
-            "🔗 <b>基础魔法：</b>\n"
-            "• <code>/bind</code> — 缔结魔法契约 (必做!)\n"
-            "• <code>/daily</code> — 每日签到领魔力\n"
-            "• <code>/me</code> — 查看魔法少女档案\n\n"
-
-            "📋 <b>每日任务：</b>\n"
-            "• <code>/tasks</code> — 查看每日任务\n"
-            "• <code>/wheel</code> — 幸运转盘抽奖\n"
-            "• <code>/active</code> — 查看活跃度\n"
-            "• <code>/rank</code> — 活跃排行榜\n\n"
-
-            "🎬 <b>影音挖矿：</b>\n"
-            "• <code>/bind</code> — 绑定账号(必需)\n"
-            "• <code>/watch_status</code> — 查看待领取奖励\n"
-            "• <code>/weekly_watch</code> — 观影排行榜\n\n"
-
-            "💰 <b>皇家金库：</b>\n"
-            "• <code>/bank</code> — 打开魔法金库\n"
-            "• <code>/shop</code> — 魔法商店\n"
-            "• <code>/gift</code> — 转赠给小伙伴\n\n"
-
-            "🔮 <b>娱乐时光：</b>\n"
-            "• <code>/poster</code> — 命运盲盒\n"
-            "• <code>/airdrop</code> — 幸运空投(管理员)\n\n"
-
-            "⚔️ <b>战斗竞技：</b>\n"
-            "• <code>/duel</code> — 魔法少女决斗\n"
-            "• <code>/hall</code> — 战力排行榜\n"
-            "• <code>/tower</code> — 通天塔挑战\n\n"
-
-            "━━━━━━━━━━━━━━━━━━\n"
-            "<i>\"遇到困难的话...随时召唤看板娘哦！(｡•̀ᴗ-)✧\"</i>"
-        )
+        from config.commands import format_help_text
+        txt = format_help_text()
         buttons = [[InlineKeyboardButton("🔙 返回菜单", callback_data="back_menu")]]
         try:
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')

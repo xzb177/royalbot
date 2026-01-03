@@ -11,17 +11,50 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 
 
+class Guild(Base):
+    """公会模型"""
+    __tablename__ = 'guilds'
+
+    # 性能优化索引
+    __table_args__ = (
+        Index('idx_guild_level_power', 'level', 'total_power'),  # 公会排行榜查询
+        Index('idx_guild_leader', 'leader_id'),                   # 会长查询
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True, nullable=False)     # 公会名称
+    leader_id = Column(BigInteger, nullable=False)         # 会长ID
+    leader_name = Column(String)                            # 会长名称
+    description = Column(Text, default="")                  # 公会简介
+    level = Column(Integer, default=1)                      # 公会等级 (1-10)
+    exp = Column(Integer, default=0)                        # 公会经验
+    members = Column(Text, default="")                      # 成员列表 (逗号分隔user_id)
+    member_count = Column(Integer, default=1)               # 成员数量
+    max_members = Column(Integer, default=20)               # 最大成员数
+    created_at = Column(DateTime, default=datetime.now)     # 创建时间
+    total_power = Column(Integer, default=0)                # 总战力
+    treasury = Column(Integer, default=0)                   # 公会金库（MP）
+    announcement = Column(Text, default="")                 # 公会公告
+
+
 class UserBinding(Base):
     """用户数据模型 - 主表"""
     __tablename__ = 'bindings'
 
     # === 索引定义（性能优化） ===
     __table_args__ = (
-        Index('idx_attack', 'attack'),          # 战力排行榜
-        Index('idx_bank_points', 'bank_points'), # 财富排行榜
-        Index('idx_is_vip', 'is_vip'),          # VIP用户查询
-        Index('idx_win', 'win'),                # 胜场排行
-        Index('idx_total_earned', 'total_earned'), # 财富成就
+        # 单列索引
+        Index('idx_attack', 'attack'),                # 战力排行榜
+        Index('idx_bank_points', 'bank_points'),      # 财富排行榜
+        Index('idx_is_vip', 'is_vip'),                # VIP用户查询
+        Index('idx_win', 'win'),                      # 胜场排行
+        Index('idx_total_earned', 'total_earned'),    # 财富成就
+        # 复合索引 - 优化常见查询组合
+        Index('idx_emby_account', 'emby_account'),    # Emby账号查询（绑定检查）
+        Index('idx_guild_id', 'guild_id'),            # 公会成员查询
+        Index('idx_checkin_date', 'last_checkin_date'), # 签到日期查询
+        Index('idx_checkin_consecutive', 'consecutive_checkin'), # 连续签到排行
+        Index('idx_breakthrough', 'breakthrough_level', 'breakthrough_exp'), # 突破查询
     )
 
     # === 基础字段 ===
@@ -71,6 +104,8 @@ class UserBinding(Base):
 
     # === 保底系统 ===
     gacha_pity_counter = Column(Integer, default=0)   # 盲盒保底计数（连续未出SR+次数）
+    gacha_total_count = Column(Integer, default=0)    # 累计抽卡次数（用于80抽保底）
+    last_sr_gacha_count = Column(Integer, default=0)  # 上次出SR时的累计次数（用于计算保底）
     lose_streak = Column(Integer, default=0)          # 连败计数（用于安慰机制）
 
     # === 成就系统 ===
@@ -138,10 +173,35 @@ class UserBinding(Base):
     # === 武器收藏系统 ===
     weapon_collection = Column(Text, default="")  # 收藏的武器列表（逗号分隔）
 
+    # === 战力突破系统 ===
+    breakthrough_level = Column(Integer, default=0)       # 突破等级 (0-10)
+    breakthrough_exp = Column(Integer, default=0)         # 突破经验值
+    total_mp_spent_breakthrough = Column(Integer, default=0)  # 突破累计消耗MP
+
+    # === 公会系统 ===
+    guild_id = Column(Integer, default=None)             # 所属公会ID
+    guild_join_date = Column(DateTime)                    # 加入公会时间
+    guild_contribution = Column(Integer, default=0)      # 公会贡献度
+
+    # === 外观系统 ===
+    owned_frames = Column(Text, default="")              # 拥有的头像框 (逗号分隔)
+    equipped_frame = Column(String, default=None)        # 当前装备的头像框
+    owned_titles = Column(Text, default="")              # 拥有的称号 (逗号分隔)
+    equipped_title = Column(String, default=None)        # 当前装备的称号
+    owned_themes = Column(Text, default="")              # 拥有的主题 (逗号分隔)
+    equipped_theme = Column(String, default="default")   # 当前主题
+
 
 class RedPacket(Base):
     """红包模型"""
     __tablename__ = 'red_packets'
+
+    # 性能优化索引
+    __table_args__ = (
+        Index('idx_packet_chat', 'chat_id'),          # 群组红包查询
+        Index('idx_packet_sender', 'sender_id'),       # 发送者红包查询
+        Index('idx_packet_created', 'created_at'),     # 时间范围查询
+    )
 
     id = Column(String, primary_key=True)             # 红包ID (UUID)
     sender_id = Column(BigInteger)                    # 发送者ID

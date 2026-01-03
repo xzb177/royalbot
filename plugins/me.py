@@ -103,8 +103,7 @@ SPECIAL_EVENTS = [
 ]
 
 # 灵魂共鸣概率说明
-RESONANCE_PROBABILITY = """💡 <b>稀有度概率</b>: UR 1% | SSR 5% | SR 15% | R 40% | N 39%
-💫 <b>特殊事件</b>: 5% 概率触发惊喜效果"""
+RESONANCE_PROBABILITY = "💫 UR 1% | SSR 5% | SR 15% | R 40% | N 39%"
 
 
 # 共感台词库（不同稀有度）

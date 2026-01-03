@@ -16,10 +16,11 @@ REWARD_RANGE = (10, 50)         # 每次互动奖励 MP 范围
 MAX_REWARD_COUNT = 50          # 每条推送最多奖励人数（防刷分）
 VIP_REWARD_MULTIPLIER = 2      # VIP 奖励倍数
 REWARD_COOLDOWN_SECONDS = 5    # 防止连续刷屏，同一用户最小间隔
+SHOW_TOP_CLAIMERS = 5          # 显示前N名领取者
 
 
 # === 📦 全局存储（ExtBot 不允许动态属性） ===
-ACTIVE_PUSHES = {}      # 活跃推送: {message_id: {chat_id, push_id, claimed_users, created_at, ...}}
+ACTIVE_PUSHES = {}      # 活跃推送: {message_id: {chat_id, push_id, claimed_users, created_at, original_caption, claim_list, ...}}
 LAST_REWARD_TIME = {}   # 防刷记录: {user_id: datetime}
 
 
@@ -54,8 +55,8 @@ async def cmd_push(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     content = ' '.join(context.args)
 
-    # 📡 发送魔法传讯
-    push_msg = await msg.reply_html(
+    # 构建推送内容
+    caption = (
         f"📜 <b>【 官 方 · 魔 法 传 讯 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{content}\n\n"
@@ -65,15 +66,21 @@ async def cmd_push(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<i>(每人限领一次，先到先得喵~)</i>"
     )
 
-    # 💾 记录这条推送消息的元数据
+    # 📡 发送魔法传讯
+    push_msg = await msg.reply_html(caption)
+
+    # 💾 记录这条推送消息的元数据（包含原始 caption 用于编辑）
     push_id = f"push_{push_msg.message_id}_{int(datetime.now().timestamp())}"
 
-    # 记录到全局变量（用于快速查找）
+    # 记录到全局变量（用于快速查找和编辑原消息）
     ACTIVE_PUSHES[push_msg.message_id] = {
         'chat_id': msg.chat_id,
         'push_id': push_id,
         'claimed_users': set(),
-        'created_at': datetime.now()
+        'created_at': datetime.now(),
+        'original_caption': caption,
+        'claim_list': [],  # 记录领取者列表
+        'is_photo': False  # 标记是否为图片消息
     }
 
     await reply_with_auto_delete(
@@ -86,10 +93,56 @@ async def cmd_push(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
+# 📝 辅助函数：构建更新后的 caption
+# ==========================================
+def build_updated_caption(original_caption: str, claim_count: int, claim_list: list, max_count: int = MAX_REWARD_COUNT) -> str:
+    """
+    构建更新后的推送消息 caption，包含领取状态
+
+    Args:
+        original_caption: 原始 caption
+        claim_count: 已领取人数
+        claim_list: 领取者列表 [(name, reward), ...]
+        max_count: 最大领取人数
+
+    Returns:
+        更新后的 caption
+    """
+    # 找到原始 caption 中"互动有奖"的位置，在那之前插入内容
+    if "✨ <b>互动有奖：</b>" in original_caption:
+        parts = original_caption.split("✨ <b>互动有奖：</b>")
+        base = parts[0]
+        suffix = "✨ <b>互动有奖：</b>" + parts[1] if len(parts) > 1 else ""
+    else:
+        base = original_caption
+        suffix = ""
+
+    # 构建领取状态
+    status_lines = []
+    if claim_count > 0:
+        status_lines.append(f"\n🎁 <b>观影挖矿进度：</b>")
+        status_lines.append(f"📊 已领取：{claim_count}/{max_count}")
+
+        # 显示前几名领取者
+        if claim_list:
+            status_lines.append(f"\n✨ <b>幸运观众：</b>")
+            for name, reward in claim_list[:SHOW_TOP_CLAIMERS]:
+                status_lines.append(f"   • {name} +{reward}MP")
+
+            if claim_count > SHOW_TOP_CLAIMERS:
+                status_lines.append(f"   ... 等 {claim_count} 人")
+
+    status_lines.append(f"\n━━━━━━━━━━━━━━")
+    status_lines.append(f"👇 <b>回复</b> 领取今日份的魔力补给！")
+
+    return base + "\n".join(status_lines) + (f"\n{suffix}" if suffix else "")
+
+
+# ==========================================
 # 💬 2. 监听回复 (发放奖励)
 # ==========================================
 async def check_reply_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """检查用户回复是否为有奖推送，发放奖励"""
+    """检查用户回复是否为有奖推送，发放奖励并编辑原消息"""
     msg = update.message
     if not msg or not msg.reply_to_message:
         return
@@ -151,18 +204,57 @@ async def check_reply_reward(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # 📝 标记为已领取
         claimed_users.add(user.id)
 
+        # 记录领取信息
+        user_name = user.first_name or user.username or "神秘魔法师"
+        if 'claim_list' not in push_data:
+            push_data['claim_list'] = []
+        push_data['claim_list'].append((user_name, reward))
+
         # 记录领取时间（防刷）
         LAST_REWARD_TIME[user.id] = datetime.now()
 
-    # 💬 回复用户
+    # 📝 编辑原推送消息，显示领取状态
     try:
-        await msg.reply_html(
-            f"{icon} <b>{flair} +{reward} MP</b>\n"
-            f"<i>魔力已注入您的契约喵~ (｡•̀ᴗ-)✧</i>",
-            disable_notification=True
+        original_caption = push_data.get('original_caption', '')
+        claim_count = len(claimed_users)
+        claim_list = push_data.get('claim_list', [])
+
+        new_caption = build_updated_caption(original_caption, claim_count, claim_list)
+
+        # 编辑原消息的 caption
+        await context.bot.edit_message_caption(
+            chat_id=push_data['chat_id'],
+            message_id=target_msg_id,
+            caption=new_caption,
+            parse_mode='HTML'
         )
-    except Exception:
-        pass  # 发送失败静默忽略
+    except Exception as e:
+        # 如果编辑失败（可能是图片消息没有 caption），尝试编辑文本消息
+        try:
+            original_caption = push_data.get('original_caption', '')
+            claim_count = len(claimed_users)
+            claim_list = push_data.get('claim_list', [])
+
+            new_caption = build_updated_caption(original_caption, claim_count, claim_list)
+
+            await context.bot.edit_message_text(
+                chat_id=push_data['chat_id'],
+                message_id=target_msg_id,
+                text=new_caption,
+                parse_mode='HTML'
+            )
+        except Exception as e2:
+            # 如果还是失败，回退到发送新消息
+            logger = __import__('logging').getLogger(__name__)
+            logger.warning(f"编辑原消息失败: {e2}, 回退到发送新消息")
+            try:
+                await msg.reply_html(
+                    f"{icon} <b>{flair} +{reward} MP</b>\n"
+                    f"<i>魔力已注入您的契约喵~ (｡•̀ᴗ-)✧</i>",
+                    disable_notification=True
+                )
+            except Exception:
+                pass
 
 
 def register(app):
