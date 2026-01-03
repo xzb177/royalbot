@@ -131,6 +131,10 @@ def get_menu_layout(is_vip: bool = False) -> list:
         [InlineKeyboardButton("📋 每日任务", callback_data="daily_tasks"),
          InlineKeyboardButton("🎡 幸运转盘", callback_data="lucky_wheel")],
 
+        # === ⚡ 新功能 ===
+        [InlineKeyboardButton("💪 战力突破", callback_data="breakthrough"),
+         InlineKeyboardButton("🏰 公会系统", callback_data="guild")],
+
         # === 更多功能 ===
         [InlineKeyboardButton("🎮 更多功能", callback_data="menu_more")],
     ]
@@ -145,6 +149,8 @@ def get_more_menu_layout() -> list:
          InlineKeyboardButton("🔮 娱乐 & 抽卡", callback_data="menu_fun")],
         [InlineKeyboardButton("🏦 资产管理", callback_data="menu_asset"),
          InlineKeyboardButton("🎒 个人物品", callback_data="menu_personal")],
+        [InlineKeyboardButton("👥 社交 & 公会", callback_data="menu_social"),
+         InlineKeyboardButton("🎨 外观商店", callback_data="cosmetics")],
         [InlineKeyboardButton("📖 帮助 & 教程", callback_data="menu_help")],
     ]
     return buttons
@@ -154,9 +160,21 @@ def get_combat_menu_layout() -> list:
     """战斗功能子菜单"""
     buttons = [
         [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
-        [InlineKeyboardButton("⚔️ 决斗场", callback_data="duel_info"),
-         InlineKeyboardButton("🗼 通天塔", callback_data="tower")],
-        [InlineKeyboardButton("🏆 排行榜", callback_data="hall")],
+        [InlineKeyboardButton("💪 战力突破", callback_data="breakthrough"),
+         InlineKeyboardButton("⚔️ 决斗场", callback_data="duel_info")],
+        [InlineKeyboardButton("🗼 通天塔", callback_data="tower"),
+         InlineKeyboardButton("🏆 排行榜", callback_data="hall")],
+    ]
+    return buttons
+
+
+def get_social_menu_layout() -> list:
+    """社交功能子菜单"""
+    buttons = [
+        [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
+        [InlineKeyboardButton("🏰 公会系统", callback_data="guild"),
+         InlineKeyboardButton("🏆 荣耀殿堂", callback_data="hall")],
+        [InlineKeyboardButton("📊 活跃排行", callback_data="presence")],
     ]
     return buttons
 
@@ -920,6 +938,39 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = make_fake_update(query, effective_message=query.message)
         await cmd_weekly_watch(fake_update, context)
 
+    # === ⚡ 新功能 ===
+
+    # 战力突破
+    elif data == "breakthrough":
+        from plugins.breakthrough import breakthrough_main
+        fake_update = make_fake_update(query)
+        await breakthrough_main(fake_update, context)
+
+    # 公会系统
+    elif data == "guild":
+        from plugins.guild import guild_main
+        fake_update = make_fake_update(query)
+        await guild_main(fake_update, context)
+
+    # 外观商店
+    elif data == "cosmetics":
+        from plugins.cosmetics import cosmetics_main
+        fake_update = make_fake_update(query)
+        await cosmetics_main(fake_update, context)
+
+    # 社交菜单
+    elif data == "menu_social":
+        txt = (
+            "👥 <b>【 社 交 & 公 会 】</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "选择社交功能喵~\n"
+        )
+        buttons = get_social_menu_layout()
+        try:
+            await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
+        except Exception:
+            await query.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+
 
 def register(app):
     app.add_handler(CommandHandler("start", start_menu))
@@ -939,10 +990,15 @@ def register(app):
 
     # 子菜单按钮
     for data in ["menu_combat", "menu_fun", "menu_asset", "menu_personal", "menu_help",
-                 "menu_gift", "menu_achievement", "progress_preview", "duel_info",
+                 "menu_social", "menu_gift", "menu_achievement", "progress_preview", "duel_info",
                  "vip", "upgrade_vip", "apply_vip", "help_manual", "help_faq"]:
         app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
         print(f"  ✅ 注册: {data}", flush=True)
+
+    # 新功能按钮
+    for data in ["breakthrough", "guild", "cosmetics"]:
+        app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
+        print(f"  ✅ 新功能: {data}", flush=True)
 
     # Emby 观影挖矿相关
     for data in ["bind_emby_help", "watch_status", "weekly_watch",
