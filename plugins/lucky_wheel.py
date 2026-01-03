@@ -8,7 +8,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
-from utils import reply_with_auto_delete
+from utils import reply_with_auto_delete, edit_with_auto_delete
 from datetime import datetime, date
 import random
 
@@ -159,7 +159,7 @@ async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not u or not u.emby_account:
-            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
             return
 
         today = get_today()
@@ -178,7 +178,8 @@ async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             can_spin = True
 
         if not can_spin:
-            await query.edit_message_text(
+            await edit_with_auto_delete(
+                query,
                 "⏰ <b>今日次数已用完</b>\n\n明天再来吧！",
                 parse_mode='HTML'
             )
@@ -265,7 +266,7 @@ async def wheel_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not u or not u.emby_account:
-            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
             return
 
         today = get_today()

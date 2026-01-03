@@ -3387,3 +3387,216 @@ Push/PR → GitHub Actions 触发 → 运行测试 → 结果反馈
 - **推送**: 已推送到 main 分支
 - **群组通知**: 已发送更新通知
 
+---
+
+## 2026-01-03 降低高品质物品概率 + 多项优化
+
+### 1. 搞定了啥
+- **调整物品稀有度概率**：降低 UR/SSR 高品质物品的获取概率
+- **优化锻造系统**：调整武器锻造的稀有度分布
+- **代码格式优化**：移除多余空格，统一代码风格
+- **新增 Docker 部署配置**：`docker-compose.yml`
+- **新增更新公告脚本**：`scripts/announce_update.py`
+
+### 2. 关键信息
+**修改的文件（10个）：**
+- `plugins/fun_games.py` - 大幅重构，调整稀有度概率
+- `plugins/emby_monitor.py` - 格式优化
+- `plugins/reward_push.py` - 消息格式优化
+- `plugins/start_menu.py` - 回调排除模式更新
+- `plugins/system_cmds.py` - 小调整
+- `plugins/unified_mission.py` - 悬赏任务优化
+- `database/models.py` - 小调整
+- `main.py` - 小调整
+- `requirements.txt` - 依赖更新
+
+**新增的文件（2个）：**
+- `docker-compose.yml` - Docker 部署配置
+- `scripts/announce_update.py` - 更新公告脚本
+
+**代码检查结果：**
+- 错误: 0
+- 警告: 0
+- 提示: 2（非错误）
+
+### 3. Git 提交
+- **提交 ID**: `6f17afa`
+- **仓库**: `git@github.com:xzb177/royalbot.git`
+- **变更**: 12 个文件，1075 行新增，564 行删除
+- **推送**: ✅ 已推送到 main 分支
+- **群组通知**: ✅ 已发送更新公告
+
+---
+
+## 2026-01-03 修复背包 SSR 物品分类错误
+
+### 1. 搞定了啥
+- **修复 `get_item_rarity()` 函数**：优先检查盲盒抽到的 `(SSR)` 等标记，而不是仅依赖关键词匹配
+- **添加 CURSED 稀有度支持**：新增 💀 CURSED 分组显示
+- **防止 KeyError**：添加动态分组处理，支持未知稀有度
+
+### 2. 关键信息
+**问题原因：**
+- 盲盒抽到后存入背包的格式是 `🟡 电影名 (SSR)`
+- 原来的 `get_item_rarity()` 只检查关键词（如 "4K", "原盘"）
+- 导致 `(SSR)` 标记无法被识别，SSR 物品被错误分类到 R 或其他类别
+
+**修改的文件：**
+- `plugins/bag.py` - `get_item_rarity()` 函数重构
+
+**修改前：**
+```python
+def get_item_rarity(item_name: str) -> tuple:
+    item_upper = item_name.upper()
+    for emoji, config in RARITY_CONFIG.items():
+        for keyword in config["items"]:
+            if keyword in item_name or keyword.upper() in item_upper:
+                return emoji, config["order"]
+    return "⚪", 4
+```
+
+**修改后：**
+```python
+def get_item_rarity(item_name: str) -> tuple:
+    item_upper = item_name.upper()
+    # 优先检查盲盒系统抽到的格式
+    if "(UR)" in item_upper:
+        return "🌈", 0
+    if "(SSR)" in item_upper:
+        return "🟡", 1
+    if "(SR)" in item_upper:
+        return "🟣", 2
+    if "(R)" in item_upper:
+        return "🔵", 3
+    if "(CURSED)" in item_upper:
+        return "💀", 5
+    # 兼容关键词匹配方式
+    ...
+```
+
+**支持的新格式：**
+| 物品名格式 | 稀有度 |
+|-----------|--------|
+| `🟡 电影名 (SSR)` | SSR |
+| `🌈 电影名 (UR)` | UR |
+| `🟣 电影名 (SR)` | SR |
+| `🔵 电影名 (R)` | R |
+| `⚪ 电影名 (N)` | N |
+| `💀 电影名 (CURSED)` | CURSED |
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+- 测试 `/bag` 命令查看 SSR 物品是否正确分类
+
+---
+
+## 2026-01-03 背包系统消息自毁功能集成
+
+### 1. 搞定了啥
+- **背包回调消息自毁**：使用 `edit_with_auto_delete()` 替换 `query.edit_message_text()`
+- **群组消息自动删除**：点击背包按钮后的消息在群组中会自动30秒后删除
+- **私聊消息保留**：私聊中的背包相关消息不删除
+
+### 2. 关键信息
+**修改的文件：**
+- `plugins/bag.py` - `bag_callback()` 函数使用 `edit_with_auto_delete()`
+
+**修改内容：**
+```python
+# 修改前
+await query.edit_message_text(text, parse_mode='HTML')
+
+# 修改后
+await edit_with_auto_delete(query, text, parse_mode='HTML')
+```
+
+**效果：**
+- 群组中点击背包按钮 → 消息30秒后自动删除
+- 私聊中点击背包按钮 → 消息保留不删除
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 2798842）
+- 在群组中测试 `/bag` 命令的按钮功能
+
+---
+
+## 2026-01-03 全局消息自毁功能集成
+
+### 1. 搞定了啥
+- **批量添加消息自毁功能**：将多个插件中的 `edit_message_text` 替换为 `edit_with_auto_delete`
+- **智能区分场景**：群组消息30秒后自动删除，私聊消息保留
+- **保留交互消息**：带按钮的菜单和结果消息不删除，用户可继续操作
+
+### 2. 关键信息
+**修改的插件（5个）：**
+- `bank.py` - 银行存取款结果、错误提示（6处）
+- `forge.py` - 锻造系统错误提示（2处）
+- `lucky_wheel.py` - 幸运转盘错误提示（3处）
+- `shop.py` - 商店购买错误提示（4处）
+- `bag.py` - 背包按钮回调（4处）
+
+**修改模式：**
+```python
+# 修改前
+await query.edit_message_text(text, parse_mode='HTML')
+
+# 修改后
+await edit_with_auto_delete(query, text, parse_mode='HTML')
+```
+
+**保留不修改的原因：**
+| 插件 | 原因 |
+|------|------|
+| start_menu.py | 主菜单系统，带按钮需用户交互 |
+| vip_apply.py | 管理员审批消息，需保留记录 |
+| fun_games.py | 决斗结果带"再抽一次"按钮 |
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 2809738）
+- 在群组中测试各功能的消息是否自动删除
+
+---
+
+## 2026-01-03 任务系统实时追踪功能修复
+
+### 1. 搞定了啥
+- **修复任务追踪缺失**：为多个插件添加了 `track_activity_wrapper` 调用
+- **实时进度更新**：用户完成任务后，每日任务进度会自动更新
+- **任务完成通知**：完成任务后会自动发送奖励通知
+
+### 2. 关键信息
+**问题原因：**
+- `fun_games.py` 塔罗/盲盒/决斗完成后没有调用任务追踪
+- `checkin_bind.py` 签到功能没有调用任务追踪
+- `shop.py` 商店购买没有调用任务追踪
+
+**修改的插件（3个）：**
+| 插件 | 添加的追踪 | 任务类型 |
+|------|-----------|---------|
+| `fun_games.py` | 塔罗抽卡、决斗完成 | tarot, duel |
+| `checkin_bind.py` | 每日签到、幸运草签到 | checkin, lucky |
+| `shop.py` | 商店购买 | shop |
+
+**已存在的追踪（无需修改）：**
+| 插件 | 已有追踪 | 任务类型 |
+|------|---------|---------|
+| `forge.py` | 锻造武器 | forge |
+| `gift.py` | 转赠魔力 | gift |
+| `unified_mission.py` | 聊天消息 | chat |
+
+**修改模式：**
+```python
+# 添加的包装函数
+async def track_activity_wrapper(user_id: int, activity_type: str):
+    """包装函数，延迟导入避免循环依赖"""
+    from plugins.unified_mission import track_and_check_task
+    await track_and_check_task(user_id, activity_type)
+
+# 在关键操作后调用
+await track_activity_wrapper(user_id, "task_type")
+```
+
+### 3. 接下来该干嘛
+- 机器人已重启（PID: 2815204）
+- 测试各功能完成任务后，`/mission` 命令的进度是否实时更新
+

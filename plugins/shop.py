@@ -8,9 +8,18 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
-from utils import reply_with_auto_delete
+from utils import reply_with_auto_delete, edit_with_auto_delete
 from datetime import datetime, date
 import random
+
+
+# ==========================================
+# 任务追踪包装函数
+# ==========================================
+async def track_activity_wrapper(user_id: int, activity_type: str):
+    """包装函数，延迟导入避免循环依赖"""
+    from plugins.unified_mission import track_and_check_task
+    await track_and_check_task(user_id, activity_type)
 
 
 # 辅助函数：获取今日日期（用于每日限购重置）
@@ -372,6 +381,9 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
 
         session.commit()
 
+        # 追踪任务进度
+        await track_activity_wrapper(user_id, "shop")
+
         # 在关闭session前保存需要的值
         user_account = u.emby_account
         is_vip = u.is_vip
@@ -411,11 +423,11 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not u or not u.emby_account:
-            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
             return
 
         if item_id not in SHOP_ITEMS:
-            await query.edit_message_text("❓ <b>商品不存在喵~</b>", parse_mode='HTML')
+            await edit_with_auto_delete(query, "❓ <b>商品不存在喵~</b>", parse_mode='HTML')
             return
 
         item = SHOP_ITEMS[item_id]
@@ -431,7 +443,8 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             limit = 5 if u.is_vip else 3
             if bought_count >= limit:
-                await query.edit_message_text(
+                await edit_with_auto_delete(
+                    query,
                     f"🚫 <b>【 限 购 提 示 】</b>\n\n"
                     f"今日购买神秘宝箱已达上限喵~\n\n"
                     f"📊 <b>购买记录：</b> {bought_count}/{limit} 次\n"
@@ -442,7 +455,8 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
         if u.points < price:
-            await query.edit_message_text(
+            await edit_with_auto_delete(
+                query,
                 f"💸 <b>【 魔 力 不 足 】</b>\n\n"
                 f"钱包里只有 <b>{u.points} MP</b>\n"
                 f"购买 {item['name']} 需要 <b>{price} MP</b> 喵~",
@@ -571,6 +585,9 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         session.commit()
 
+        # 追踪任务进度
+        await track_activity_wrapper(user_id, "shop")
+
         # 在session关闭前保存需要的值
         user_account = u.emby_account
         is_vip = u.is_vip
@@ -610,7 +627,7 @@ async def shop_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not u or not u.emby_account:
-            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
             return
 
         vip_badge = " 👑" if u.is_vip else ""

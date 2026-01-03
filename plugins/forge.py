@@ -7,7 +7,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
-from utils import reply_with_auto_delete
+from utils import reply_with_auto_delete, edit_with_auto_delete
 import random
 
 
@@ -202,7 +202,7 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
         if not u or not u.emby_account:
-            await query.edit_message_text("👻 <b>请先 /bind 缔结魔法契约喵！</b>", parse_mode='HTML')
+            await edit_with_auto_delete(query, "👻 <b>请先 /bind 缔结魔法契约喵！</b>", parse_mode='HTML')
             return
 
         # 检查锻造券
@@ -225,7 +225,8 @@ async def forge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not used_ticket and u.points < cost:
             points = u.points
-            await query.edit_message_text(
+            await edit_with_auto_delete(
+                query,
                 f"🔥 <b>魔力不足喵！</b>\n\n"
                 f"锻造需要 <b>{cost} MP</b>~\n"
                 f"当前余额：{points} MP",

@@ -8,7 +8,7 @@ from collections import Counter
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
 from database import get_session, UserBinding
-from utils import reply_with_auto_delete
+from utils import reply_with_auto_delete, edit_with_auto_delete
 
 
 # 稀有度配置（用于排序和图标）
@@ -22,12 +22,31 @@ RARITY_CONFIG = {
 
 
 def get_item_rarity(item_name: str) -> tuple:
-    """根据物品名称返回稀有度图标和排序值"""
+    """根据物品名称返回稀有度图标和排序值
+
+    优先检查盲盒抽到的格式：🟡 电影名 (SSR)
+    兼容关键词匹配方式：4K、原盘等
+    """
     item_upper = item_name.upper()
+
+    # 优先检查盲盒系统抽到的格式：(UR), (SSR), (SR), (R), (N), (CURSED)
+    if "(UR)" in item_upper:
+        return "🌈", 0
+    if "(SSR)" in item_upper:
+        return "🟡", 1
+    if "(SR)" in item_upper:
+        return "🟣", 2
+    if "(R)" in item_upper:
+        return "🔵", 3
+    if "(CURSED)" in item_upper:
+        return "💀", 5  # CURSED 特殊处理
+
+    # 兼容关键词匹配方式（用于手动添加的物品）
     for emoji, config in RARITY_CONFIG.items():
         for keyword in config["items"]:
             if keyword in item_name or keyword.upper() in item_upper:
                 return emoji, config["order"]
+
     # 默认返回普通稀有度
     return "⚪", 4
 
@@ -68,19 +87,24 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🟣": [],  # SR
                 "🔵": [],  # R
                 "⚪": [],  # N
+                "💀": [],  # CURSED
             }
 
             # 将物品分组
             for item_name, num in counts.items():
                 emoji, _ = get_item_rarity(item_name)
+                if emoji not in rarity_groups:
+                    rarity_groups[emoji] = []
                 rarity_groups[emoji].append((item_name, num))
 
-            # 构建显示文本
+            # 构建显示文本（CURSED 放最后）
             items_display = ""
-            for emoji in ["🌈", "🟡", "🟣", "🔵", "⚪"]:
+            for emoji in ["🌈", "🟡", "🟣", "🔵", "⚪", "💀"]:
                 group = rarity_groups[emoji]
                 if group:
-                    items_display += f"\n{emoji} <b>{RARITY_CONFIG[emoji]['name']}</b> 稀有度：\n"
+                    # CURSED 特殊处理，其他从 RARITY_CONFIG 获取
+                    rarity_name = "CURSED" if emoji == "💀" else RARITY_CONFIG[emoji]['name']
+                    items_display += f"\n{emoji} <b>{rarity_name}</b> 稀有度：\n"
                     for item_name, num in group:
                         items_display += f"   • <b>{item_name}</b> x{num}\n"
 
@@ -125,7 +149,8 @@ async def bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "bag_gacha":
-        await query.edit_message_text(
+        await edit_with_auto_delete(
+            query,
             f"🎰 <b>【 命 运 · 盲 盒 机 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"请使用 <code>/poster</code> 命令抽取盲盒喵~\n"
@@ -135,7 +160,8 @@ async def bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
     elif query.data == "bag_tarot":
-        await query.edit_message_text(
+        await edit_with_auto_delete(
+            query,
             f"🔮 <b>【 命 运 · 塔 罗 占 卜 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"请使用 <code>/tarot</code> 命令抽取今日塔罗牌喵~\n"
@@ -145,7 +171,8 @@ async def bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
     elif query.data == "bag_me":
-        await query.edit_message_text(
+        await edit_with_auto_delete(
+            query,
             f"📜 <b>【 冒 险 者 · 档 案 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"请使用 <code>/me</code> 命令查看详细个人资料喵~\n"

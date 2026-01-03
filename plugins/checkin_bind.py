@@ -13,6 +13,15 @@ from utils import reply_with_auto_delete
 import random
 
 
+# ==========================================
+# 任务追踪包装函数
+# ==========================================
+async def track_activity_wrapper(user_id: int, activity_type: str):
+    """包装函数，延迟导入避免循环依赖"""
+    from plugins.unified_mission import track_and_check_task
+    await track_and_check_task(user_id, activity_type)
+
+
 def check_achievement(user, user_id=None):
     """检查成就（导入achievement模块）"""
     try:
@@ -167,6 +176,12 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         session.commit()
+
+        # 追踪任务进度
+        await track_activity_wrapper(user_id, "checkin")
+        if lucky_crit:
+            await track_activity_wrapper(user_id, "lucky")
+
         await reply_with_auto_delete(msg, text)
 
 

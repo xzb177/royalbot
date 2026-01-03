@@ -6,7 +6,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
-from utils import reply_with_auto_delete
+from utils import reply_with_auto_delete, edit_with_auto_delete
 from datetime import datetime, timedelta, timezone
 
 
@@ -224,7 +224,7 @@ async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not u:
-            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>")
+            await edit_with_auto_delete(query, "💔 <b>请先绑定账号喵！</b>")
             return
 
         if query.data == "bank_dep_all":
@@ -233,19 +233,20 @@ async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 u.points = 0
                 u.bank_points += amount
                 session.commit()
-                await query.edit_message_text(
+                await edit_with_auto_delete(
+                    query,
                     f"📥 <b>存入成功喵~</b>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"💰 已存入：{amount} MP\n"
                     f"🏦 当前金库：{u.bank_points} MP"
                 )
             else:
-                await query.edit_message_text("💸 <b>钱包空空如也喵！</b>")
+                await edit_with_auto_delete(query, "💸 <b>钱包空空如也喵！</b>")
 
         elif query.data == "bank_with_all":
             amount = u.bank_points
             if amount <= 0:
-                await query.edit_message_text("🏦 <b>金库空空如也喵！</b>")
+                await edit_with_auto_delete(query, "🏦 <b>金库空空如也喵！</b>")
                 return
 
             # 计算并结算利息
@@ -266,7 +267,8 @@ async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             interest_text = f"\n💰 <b>利息收入：</b> +{total_interest} MP" if total_interest > 0 else ""
 
             if u.is_vip:
-                await query.edit_message_text(
+                await edit_with_auto_delete(
+                    query,
                     f"📤 <b>取出成功喵~</b>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"💰 已取出：{amount} MP\n"
@@ -275,7 +277,8 @@ async def bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"💵 实际到账：<b>{actual + total_interest} MP</b>"
                 )
             else:
-                await query.edit_message_text(
+                await edit_with_auto_delete(
+                    query,
                     f"📤 <b>取出成功喵~</b>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"💰 已取出：{amount} MP\n"
