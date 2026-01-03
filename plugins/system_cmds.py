@@ -19,8 +19,7 @@ PUBLIC_COMMANDS = [
     ("myweapon", "⚔️ 我的装备"),
     ("mission", "📜 悬赏公会"),
     ("duel", "⚔️ 魔法决斗"),
-    ("tarot", "🔮 塔罗盲盒"),
-    ("poster", "🎰 抽取电影"),
+    ("poster", "🎰 命运盲盒"),
     ("shop", "🎁 魔法商店"),
     ("gift", "💝 魔力转赠"),
     ("hall", "🏆 荣耀殿堂"),
@@ -109,11 +108,20 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await bot.set_my_commands(commands=[BotCommand(c, d) for c, d in PUBLIC_COMMANDS], scope=BotCommandScopeDefault())
         full_cmds = PUBLIC_COMMANDS + ADMIN_COMMANDS
         await bot.set_my_commands(commands=[BotCommand(c, d) for c, d in full_cmds], scope=BotCommandScopeChat(chat_id=MY_ADMIN_ID))
-        await query.edit_message_text("✅ <b>菜单已刷新！</b>", parse_mode='HTML')
-        await query.message.reply_html(
-            f"🛡️ <b>【 管理员控制台 】</b>\n\n✅ 菜单刷新成功！",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 返回", callback_data="admin_back")]])
+
+        # 返回控制台
+        with get_session() as session:
+            total_users = session.query(UserBinding).count()
+            vip_users = session.query(UserBinding).filter_by(is_vip=True).count()
+
+        text = (
+            f"🛡️ <b>【 管理员控制台 】</b>\n\n"
+            f"✅ <b>菜单刷新成功！</b>\n\n"
+            f"📊 <b>用户统计：</b>\n"
+            f"总用户：{total_users}\n"
+            f"VIP用户：{vip_users}"
         )
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 返回", callback_data="admin_back")]]), parse_mode='HTML')
 
     elif data == "admin_back":
         # 返回主面板

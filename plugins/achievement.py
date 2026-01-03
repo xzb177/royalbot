@@ -16,7 +16,54 @@ from datetime import datetime
 # 🏆 成就配置
 # ==========================================
 ACHIEVEMENTS = {
+    # === 新手友好成就 (新增) ===
+    "first_checkin": {
+        "name": "🌱 初次相遇",
+        "desc": "完成第一次签到",
+        "reward": 10,
+        "reward_type": "points",
+        "emoji": "🌱",
+        "category": "新手",
+        "check": lambda u: (u.total_checkin_days or 0) >= 1
+    },
+    "bound": {
+        "name": "📜 魔法契约",
+        "desc": "缔结魔法契约",
+        "reward": 20,
+        "reward_type": "points",
+        "emoji": "📜",
+        "category": "新手",
+        "check": lambda u: u.emby_account is not None and u.emby_account != ""
+    },
+    "first_forge": {
+        "name": "⚒️ 铁匠学徒",
+        "desc": "完成第一次锻造",
+        "reward": 30,
+        "reward_type": "points",
+        "emoji": "⚒️",
+        "category": "新手",
+        "check": lambda u: u.weapon is not None and u.weapon != ""
+    },
+
     # === 签到成就 ===
+    "checkin_1": {
+        "name": "🍬 甜蜜开始",
+        "desc": "连续签到1天",
+        "reward": 5,
+        "reward_type": "points",
+        "emoji": "🍬",
+        "category": "签到",
+        "check": lambda u: (u.consecutive_checkin or 0) >= 1
+    },
+    "checkin_3": {
+        "name": "🌸 三日坚持",
+        "desc": "连续签到3天",
+        "reward": 15,
+        "reward_type": "points",
+        "emoji": "🌸",
+        "category": "签到",
+        "check": lambda u: (u.consecutive_checkin or 0) >= 3
+    },
     "checkin_7": {
         "name": "📅 坚持签到",
         "desc": "连续签到7天",
@@ -260,29 +307,215 @@ ACHIEVEMENTS = {
         "title": "炼金术士",
         "check": lambda u: False
     },
+
+    # === 通天塔成就 ===
+    "tower_10": {
+        "name": "🗼 登塔者",
+        "desc": "通天塔到达第10层",
+        "reward": 50,
+        "reward_type": "points",
+        "emoji": "🗼",
+        "category": "通天塔",
+        "check": lambda u: (u.tower_max_floor or 0) >= 10
+    },
+    "tower_50": {
+        "name": "🏯 高塔征服者",
+        "desc": "通天塔到达第50层",
+        "reward": 200,
+        "reward_type": "points",
+        "emoji": "🏯",
+        "category": "通天塔",
+        "title": "登塔达人",
+        "check": lambda u: (u.tower_max_floor or 0) >= 50
+    },
+    "tower_100": {
+        "name": "🏰 通天主宰",
+        "desc": "通天塔到达第100层",
+        "reward": 500,
+        "reward_type": "points",
+        "emoji": "🏰",
+        "category": "通天塔",
+        "title": "屠龙勇士",
+        "check": lambda u: (u.tower_max_floor or 0) >= 100
+    },
+    "tower_kills_50": {
+        "name": "⚔️ 怪物猎人",
+        "desc": "通天塔击败50只怪物",
+        "reward": 100,
+        "reward_type": "points",
+        "emoji": "⚔️",
+        "category": "通天塔",
+        "check": lambda u: (u.tower_total_wins or 0) >= 50
+    },
+    "tower_kills_200": {
+        "name": "🗡️ 屠魔大师",
+        "desc": "通天塔击败200只怪物",
+        "reward": 300,
+        "reward_type": "points",
+        "emoji": "🗡️",
+        "category": "通天塔",
+        "title": "魔物终结者",
+        "check": lambda u: (u.tower_total_wins or 0) >= 200
+    },
+
+    # === 灵魂共鸣成就 ===
+    "resonance_10": {
+        "name": "💫 初次共鸣",
+        "desc": "进行10次灵魂共鸣",
+        "reward": 50,
+        "reward_type": "points",
+        "emoji": "💫",
+        "category": "共鸣",
+        "check": lambda u: (u.resonance_count or 0) >= 10
+    },
+    "resonance_50": {
+        "name": "💖 灵魂相连",
+        "desc": "进行50次灵魂共鸣",
+        "reward": 200,
+        "reward_type": "points",
+        "emoji": "💖",
+        "category": "共鸣",
+        "title": "羁绊使者",
+        "check": lambda u: (u.resonance_count or 0) >= 50
+    },
+    "resonance_100": {
+        "name": "💕 命运红绳",
+        "desc": "进行100次灵魂共鸣",
+        "reward": 500,
+        "reward_type": "points",
+        "emoji": "💕",
+        "category": "共鸣",
+        "title": "灵魂伴侣",
+        "check": lambda u: (u.resonance_count or 0) >= 100
+    },
+    "intimacy_500": {
+        "name": "💓 亲密好友",
+        "desc": "好感度达到500",
+        "reward": 100,
+        "reward_type": "points",
+        "emoji": "💓",
+        "category": "共鸣",
+        "check": lambda u: (u.intimacy or 0) >= 500
+    },
+    "intimacy_1000": {
+        "name": "💗 深情知己",
+        "desc": "好感度达到1000",
+        "reward": 300,
+        "reward_type": "points",
+        "emoji": "💗",
+        "category": "共鸣",
+        "title": "命中注定",
+        "check": lambda u: (u.intimacy or 0) >= 1000
+    },
+
+    # === 幸运转盘成就 ===
+    "wheel_10": {
+        "name": "🎡 幸运儿",
+        "desc": "使用幸运转盘10次",
+        "reward": 50,
+        "reward_type": "points",
+        "emoji": "🎡",
+        "category": "转盘",
+        "check": lambda u: False  # 需要追踪wheel_total字段
+    },
+    "wheel_50": {
+        "name": "🍀 运气爆棚",
+        "desc": "使用幸运转盘50次",
+        "reward": 200,
+        "reward_type": "points",
+        "emoji": "🍀",
+        "category": "转盘",
+        "title": "天选之人",
+        "check": lambda u: False
+    },
 }
 
 
 # ==========================================
 # 🎖️ 成就检查与颁发（供其他插件调用）
 # ==========================================
-def check_and_award_achievement(user: UserBinding, achievement_id: str, session=None) -> dict:
+
+async def broadcast_achievement_unlock(user: UserBinding, achievement: dict, context: ContextTypes.DEFAULT_TYPE = None):
+    """
+    将成就解锁消息广播到所有用户所在的群聊
+
+    Args:
+        user: 解锁成就的用户
+        achievement: 成就信息字典
+        context: Telegram context
+    """
+    if not context or not context.bot:
+        return
+
+    # 获取成就信息
+    emoji = achievement.get("emoji", "🏆")
+    name = achievement.get("name", "未知成就")
+    reward = achievement.get("reward", 0)
+    title = achievement.get("title", "")
+
+    # 构建炫耀消息
+    vip_badge = " 👑" if user.is_vip else ""
+    txt = (
+        f"🎊🎊 <b>【 成 就 解 锁 】</b> 🎊🎊\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"👤 恭喜 <b>{user.emby_account}</b>{vip_badge}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"{emoji} <b>{name}</b>\n"
+    )
+
+    if title:
+        txt += f"🏅 获得称号：<b>{title}</b>\n"
+
+    if reward > 0:
+        txt += f"💰 奖励：<b>+{reward} MP</b>\n"
+
+    txt += (
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>\"太厉害了！大家快来膜拜喵！(≧◡≦)\"</i>"
+    )
+
+    # 发送到所有有权限的群聊
+    try:
+        # 获取bot所在的所有群聊
+        from telegram import Chat
+        # 这里使用用户所在的群聊列表（如果有存储的话）
+        # 或者发送到配置的公告群
+
+        # 简化版：发送到默认公告群（如果配置了）
+        # 这里可以通过环境变量或配置文件设置公告群ID
+
+        # 获取用户当前所在的聊天（通过context传进来）
+        # 如果achievement是在群里触发的，就发到那个群
+        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"广播成就失败: {e}")
+
+
+def check_and_award_achievement(user: UserBinding, achievement_id: str, session=None, context=None, chat_id=None) -> dict:
     """
     检查并颁发成就
-    返回: {"new": bool, "reward": int, "name": str, "title": str, "emoji": str}
+    返回: {"new": bool, "reward": int, "name": str, "title": str, "emoji": str, "broadcasted": bool}
+
+    Args:
+        user: 用户对象
+        achievement_id: 成就ID
+        session: 数据库session
+        context: Telegram context (用于广播)
+        chat_id: 触发成就的聊天ID (用于发送炫耀消息)
     """
     if achievement_id not in ACHIEVEMENTS:
-        return {"new": False, "reward": 0, "name": "", "title": "", "emoji": ""}
+        return {"new": False, "reward": 0, "name": "", "title": "", "emoji": "", "broadcasted": False}
 
     # 检查是否已完成
     completed = set(user.achievements.split(",")) if user.achievements else set()
     if achievement_id in completed:
-        return {"new": False, "reward": 0, "name": "", "title": "", "emoji": ""}
+        return {"new": False, "reward": 0, "name": "", "title": "", "emoji": "", "broadcasted": False}
 
     # 检查条件（如果定义了check函数）
     achievement = ACHIEVEMENTS[achievement_id]
     if "check" in achievement and not achievement["check"](user):
-        return {"new": False, "reward": 0, "name": "", "title": "", "emoji": ""}
+        return {"new": False, "reward": 0, "name": "", "title": "", "emoji": "", "broadcasted": False}
 
     # 颁发成就
     completed.add(achievement_id)
@@ -293,19 +526,61 @@ def check_and_award_achievement(user: UserBinding, achievement_id: str, session=
     if achievement["reward_type"] == "points":
         user.points += reward
 
-    return {
+    result = {
         "new": True,
         "reward": reward,
         "name": achievement["name"],
         "title": achievement.get("title", ""),
-        "emoji": achievement["emoji"]
+        "emoji": achievement["emoji"],
+        "broadcasted": False
     }
 
+    # 如果是在群聊中触发且是重要成就，发送炫耀消息
+    if context and chat_id:
+        try:
+            # 判断是否是重要成就（奖励>=100或有称号）
+            is_important = reward >= 100 or achievement.get("title")
 
-def check_all_achievements(user: UserBinding, session=None) -> list:
+            if is_important:
+                vip_badge = " 👑" if user.is_vip else ""
+                txt = (
+                    f"🎊 <b>【 成 就 解 锁 】</b> 🎊\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 恭喜 <b>{user.emby_account}</b>{vip_badge}\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"{achievement['emoji']} <b>{achievement['name']}</b>\n"
+                )
+
+                if achievement.get("title"):
+                    txt += f"🏅 获得称号：<b>{achievement['title']}</b>\n"
+
+                if reward > 0:
+                    txt += f"💰 奖励：<b>+{reward} MP</b>\n"
+
+                txt += "━━━━━━━━━━━━━━━━━━\n"
+                txt += "<i>\"太厉害了！大家快来膜拜喵！(≧◡≦)\"</i>"
+
+                # 发送到群聊
+                import asyncio
+                asyncio.create_task(context.bot.send_message(chat_id=chat_id, text=txt, parse_mode='HTML'))
+                result["broadcasted"] = True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"发送成就炫耀消息失败: {e}")
+
+    return result
+
+
+def check_all_achievements(user: UserBinding, session=None, context=None, chat_id=None) -> list:
     """
     检查所有可完成的成就
     返回: 新完成的成就列表
+
+    Args:
+        user: 用户对象
+        session: 数据库session
+        context: Telegram context (用于广播重要成就)
+        chat_id: 触发检查的聊天ID (用于发送炫耀消息)
     """
     new_achievements = []
     completed = set(user.achievements.split(",")) if user.achievements else set()
@@ -314,7 +589,7 @@ def check_all_achievements(user: UserBinding, session=None) -> list:
         if ach_id in completed:
             continue
         if "check" in achievement and achievement["check"](user):
-            result = check_and_award_achievement(user, ach_id, session)
+            result = check_and_award_achievement(user, ach_id, session, context, chat_id)
             if result["new"]:
                 new_achievements.append(result)
 
@@ -358,11 +633,184 @@ def get_user_titles(user: UserBinding) -> list:
     return titles
 
 
+def get_next_achievements(user: UserBinding, limit: int = 3) -> list:
+    """
+    获取用户即将解锁的成就（进度提示）
+
+    Args:
+        user: 用户对象
+        limit: 返回数量限制
+
+    Returns:
+        即将解锁的成就列表，包含进度信息
+    """
+    completed = set(user.achievements.split(",")) if user.achievements else set()
+    next_achievements = []
+
+    # 计算每个未完成成就的进度
+    for ach_id, achievement in ACHIEVEMENTS.items():
+        if ach_id in completed:
+            continue
+
+        # 获取进度
+        progress_info = get_achievement_single_progress(user, ach_id, achievement)
+        if progress_info:
+            progress_info["id"] = ach_id
+            next_achievements.append(progress_info)
+
+    # 按进度百分比排序，显示最接近完成的
+    next_achievements.sort(key=lambda x: x["percentage"], reverse=True)
+    return next_achievements[:limit]
+
+
+def get_achievement_single_progress(user: UserBinding, ach_id: str, achievement: dict) -> dict:
+    """
+    获取单个成就的进度
+
+    Returns:
+        {
+            "name": "成就名称",
+            "emoji": "🏆",
+            "desc": "成就描述",
+            "current": 当前值,
+            "target": 目标值,
+            "percentage": 百分比,
+            "remaining": 还差多少
+        }
+    """
+    # 根据不同成就类型计算进度
+    if ach_id == "first_checkin" or ach_id == "checkin_1":
+        current = user.total_checkin_days or 0
+        target = 1
+    elif ach_id == "checkin_3":
+        current = user.consecutive_checkin or 0
+        target = 3
+    elif ach_id.startswith("checkin_"):
+        if "100" in ach_id:
+            current = user.total_checkin_days or 0
+            target = 100
+        elif "30" in ach_id:
+            current = user.consecutive_checkin or 0
+            target = 30
+        elif "7" in ach_id:
+            current = user.consecutive_checkin or 0
+            target = 7
+        else:
+            current = user.consecutive_checkin or 0
+            target = 1
+
+    elif ach_id == "bound":
+        current = 1 if user.emby_account else 0
+        target = 1
+    elif ach_id == "first_forge":
+        current = 1 if user.weapon and user.weapon != "" else 0
+        target = 1
+
+    elif ach_id.startswith("duel_"):
+        if "100" in ach_id:
+            current = user.win or 0
+            target = 100
+        elif "50" in ach_id:
+            current = user.win or 0
+            target = 50
+        elif "10" in ach_id:
+            current = user.win or 0
+            target = 10
+        else:  # 1
+            current = user.win or 0
+            target = 1
+
+    elif ach_id.startswith("win_streak_"):
+        current = user.win_streak or 0
+        target = 10 if "10" in ach_id else 5
+
+    elif ach_id.startswith("power_"):
+        current = user.attack or 0
+        if "10000" in ach_id:
+            target = 10000
+        elif "5000" in ach_id:
+            target = 5000
+        elif "1000" in ach_id:
+            target = 1000
+        elif "500" in ach_id:
+            target = 500
+        else:
+            target = 100
+
+    elif ach_id.startswith("tower_"):
+        if "100" in ach_id:
+            current = user.tower_max_floor or 0
+            target = 100
+        elif "50" in ach_id:
+            current = user.tower_max_floor or 0
+            target = 50
+        else:  # 10
+            current = user.tower_max_floor or 0
+            target = 10
+
+    elif ach_id.startswith("tower_kills_"):
+        if "200" in ach_id:
+            current = user.tower_total_wins or 0
+            target = 200
+        else:  # 50
+            current = user.tower_total_wins or 0
+            target = 50
+
+    elif ach_id.startswith("resonance_"):
+        current = user.resonance_count or 0
+        if "100" in ach_id:
+            target = 100
+        elif "50" in ach_id:
+            target = 50
+        else:  # 10
+            target = 10
+
+    elif ach_id.startswith("intimacy_"):
+        current = user.intimacy or 0
+        target = 1000 if "1000" in ach_id else 500
+
+    elif ach_id.startswith("wealth_"):
+        current = user.total_earned or 0
+        if "100000" in ach_id:
+            target = 100000
+        elif "50000" in ach_id:
+            target = 50000
+        else:  # 10000
+            target = 10000
+
+    elif ach_id.startswith("spend_"):
+        current = user.total_spent or 0
+        target = 50000 if "50000" in ach_id else 5000
+
+    elif ach_id.startswith("collect_"):
+        items = set(user.items.split(",")) if user.items else set()
+        current = len(items)
+        target = 50 if "50" in ach_id else 10
+
+    else:
+        # 无法计算进度的成就
+        return None
+
+    percentage = min(100, int(current / target * 100)) if target > 0 else 0
+
+    return {
+        "name": achievement["name"],
+        "emoji": achievement["emoji"],
+        "desc": achievement["desc"],
+        "reward": achievement["reward"],
+        "current": current,
+        "target": target,
+        "percentage": percentage,
+        "remaining": max(0, target - current)
+    }
+
+
 # ==========================================
 # 📜 成就展示命令
 # ==========================================
 async def achievement_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """显示成就列表"""
+    query = getattr(update, "callback_query", None)
     msg = update.effective_message
     if not msg:
         return
@@ -375,8 +823,12 @@ async def achievement_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来~")
             return
 
-        # 自动检查新成就
-        new_achievements = check_all_achievements(user, session)
+        # 获取聊天ID（如果在群聊中，用于广播成就）
+        from telegram import Chat
+        chat_id = msg.chat_id if msg.chat.type != Chat.PRIVATE else None
+
+        # 自动检查新成就（传入context和chat_id用于广播）
+        new_achievements = check_all_achievements(user, session, context, chat_id)
         if new_achievements:
             session.commit()
 
@@ -407,6 +859,18 @@ async def achievement_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 txt += f"   {ach['emoji']} {ach['name']} (+{ach['reward']}MP)\n"
             txt += "━━━━━━━━━━━━━━━━━━\n"
 
+        # [新增] 即将解锁的成就
+        next_achievements = get_next_achievements(user, limit=3)
+        if next_achievements:
+            txt += f"\n🎯 <b>【 即 将 解 锁 】</b>\n"
+            for ach in next_achievements:
+                percentage = ach['percentage']
+                bar_fill = "█" * (percentage // 10)
+                bar_empty = "░" * (10 - percentage // 10)
+                txt += f"\n{ach['emoji']} {ach['name']}\n"
+                txt += f"   [{bar_fill}{bar_empty}] {percentage}% ({ach['current']}/{ach['target']})\n"
+            txt += "━━━━━━━━━━━━━━━━━━\n"
+
         # 按分类展示成就
         categories = {}
         for ach_id, ach in ACHIEVEMENTS.items():
@@ -430,7 +894,10 @@ async def achievement_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += "<i>\"完成成就获得MP奖励和专属称号喵~(｡•̀ᴗ-)✧\"</i>"
 
         # 成就页面不使用自毁（保留查看）
-        await msg.reply_html(txt, disable_web_page_preview=True)
+        if query:
+            await query.edit_message_text(txt, disable_web_page_preview=True, parse_mode='HTML')
+        else:
+            await msg.reply_html(txt, disable_web_page_preview=True)
 
 
 async def achievement_titles(update: Update, context: ContextTypes.DEFAULT_TYPE):

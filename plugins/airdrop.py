@@ -8,6 +8,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from database import get_session, UserBinding
+from utils import edit_with_auto_delete
 from datetime import datetime, timedelta
 import random
 import asyncio
@@ -194,10 +195,7 @@ async def airdrop_open_callback(update: Update, context: ContextTypes.DEFAULT_TY
             f"💎 <b>总计：</b> {total} MP"
         )
 
-        try:
-            await query.edit_message_text(txt, parse_mode='HTML')
-        except Exception:
-            await query.message.reply_html(txt)
+        await edit_with_auto_delete(query, txt, parse_mode='HTML')
 
 
 def register(app):

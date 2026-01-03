@@ -3,6 +3,102 @@ from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 from types import SimpleNamespace
+import aiohttp
+import re
+import random
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# Emby 配置
+EMBY_URL = os.getenv("EMBY_URL", "")
+EMBY_API_KEY = os.getenv("EMBY_API_KEY", "")
+
+
+class CallbackMessageEditor:
+    """回调消息编辑器 - 统一处理所有按钮回调的响应"""
+
+    def __init__(self, query, context):
+        self.query = query
+        self.context = context
+        self.original_message = None
+        self._captured = False
+
+    async def edit(self, text, buttons=None, parse_mode='HTML'):
+        """编辑原消息"""
+        keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]] if buttons is None else buttons
+        try:
+            await self.query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=parse_mode)
+            return True
+        except Exception as e:
+            logger.warning(f"编辑消息失败: {e}")
+            return False
+
+    async def send(self, text, buttons=None, parse_mode='HTML'):
+        """发送新消息（仅当编辑失败时使用）"""
+        keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]] if buttons is None else buttons
+        try:
+            await self.query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=parse_mode)
+        except:
+            pass
+
+
+async def handle_plugin_callback(query, plugin_func, context, **kwargs):
+    """
+    统一处理插件回调 - 编辑原消息而不是发送新消息
+
+    用法: await handle_plugin_callback(query, module.function, context)
+    """
+    # 临时保存原始消息发送方法
+    original_reply = None
+    original_reply_html = None
+    captured_messages = []
+
+    async def capture_reply(msg, text, **kwargs):
+        """捕获回复消息"""
+        captured_messages.append(('text', text, kwargs))
+        # 不实际发送，稍后统一编辑
+
+    async def capture_reply_html(msg, text, **kwargs):
+        """捕获 HTML 回复消息"""
+        captured_messages.append(('html', text, kwargs))
+
+    # 创建 fake_update
+    fake_update = make_fake_update(query, **kwargs)
+
+    # 尝试调用插件函数，并拦截消息
+    try:
+        result = await plugin_func(fake_update, context)
+    except Exception as e:
+        logger.error(f"插件函数执行失败: {e}")
+        await query.edit_message_text(f"⚠️ 操作失败: {str(e)}")
+        return
+
+    # 如果有捕获的消息，编辑原消息
+    if captured_messages:
+        for msg_type, text, kw in captured_messages:
+            keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]]
+            try:
+                await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+                break  # 只显示第一条消息
+            except:
+                continue
+
+
+async def edit_callback_message(query, text, buttons=None, parse_mode='HTML'):
+    """统一处理回调消息编辑，避免刷屏"""
+    keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]] if buttons is None else buttons
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=parse_mode)
+    except Exception as e:
+        logger.error(f"编辑消息失败: {e}")
+        # 如果编辑失败，尝试回复新消息（兼容性处理）
+        try:
+            await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=parse_mode)
+        except:
+            pass
 
 
 def make_fake_update(query, **kwargs):
@@ -11,6 +107,7 @@ def make_fake_update(query, **kwargs):
         'effective_user': query.from_user,
         'effective_message': query.message,
         'message': query.message,
+        'callback_query': query,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -44,10 +141,10 @@ def get_more_menu_layout() -> list:
     """获取"更多功能"子菜单"""
     buttons = [
         [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_main")],
-        [InlineKeyboardButton("⚔️ 决斗 & 战斗", callback_data="menu_combat")],
-        [InlineKeyboardButton("🔮 娱乐 & 抽卡", callback_data="menu_fun")],
-        [InlineKeyboardButton("🏦 资产管理", callback_data="menu_asset")],
-        [InlineKeyboardButton("🎒 个人物品", callback_data="menu_personal")],
+        [InlineKeyboardButton("⚔️ 决斗 & 战斗", callback_data="menu_combat"),
+         InlineKeyboardButton("🔮 娱乐 & 抽卡", callback_data="menu_fun")],
+        [InlineKeyboardButton("🏦 资产管理", callback_data="menu_asset"),
+         InlineKeyboardButton("🎒 个人物品", callback_data="menu_personal")],
         [InlineKeyboardButton("📖 帮助 & 教程", callback_data="menu_help")],
     ]
     return buttons
@@ -57,8 +154,8 @@ def get_combat_menu_layout() -> list:
     """战斗功能子菜单"""
     buttons = [
         [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
-        [InlineKeyboardButton("⚔️ 决斗场", callback_data="duel_info")],
-        [InlineKeyboardButton("🗼 通天塔", callback_data="tower")],
+        [InlineKeyboardButton("⚔️ 决斗场", callback_data="duel_info"),
+         InlineKeyboardButton("🗼 通天塔", callback_data="tower")],
         [InlineKeyboardButton("🏆 排行榜", callback_data="hall")],
     ]
     return buttons
@@ -68,9 +165,8 @@ def get_fun_menu_layout() -> list:
     """娱乐功能子菜单"""
     buttons = [
         [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
-        [InlineKeyboardButton("🔮 命运占卜", callback_data="tarot")],
-        [InlineKeyboardButton("🎰 盲盒抽取", callback_data="poster")],
-        [InlineKeyboardButton("⚒️ 灵装炼金", callback_data="forge")],
+        [InlineKeyboardButton("🎰 命运盲盒", callback_data="poster"),
+         InlineKeyboardButton("⚒️ 灵装炼金", callback_data="forge")],
     ]
     return buttons
 
@@ -79,8 +175,8 @@ def get_asset_menu_layout() -> list:
     """资产管理子菜单"""
     buttons = [
         [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
-        [InlineKeyboardButton("🏦 皇家银行", callback_data="bank")],
-        [InlineKeyboardButton("🛒 魔法商店", callback_data="shop")],
+        [InlineKeyboardButton("🏦 皇家银行", callback_data="bank"),
+         InlineKeyboardButton("🛒 魔法商店", callback_data="shop")],
         [InlineKeyboardButton("💝 转赠魔力", callback_data="menu_gift")],
     ]
     return buttons
@@ -90,10 +186,10 @@ def get_personal_menu_layout() -> list:
     """个人物品子菜单"""
     buttons = [
         [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
-        [InlineKeyboardButton("🎒 次源背包", callback_data="bag")],
-        [InlineKeyboardButton("📊 活跃度", callback_data="presence")],
-        [InlineKeyboardButton("📈 进度预告", callback_data="progress_preview")],
-        [InlineKeyboardButton("🏆 成就殿堂", callback_data="menu_achievement")],
+        [InlineKeyboardButton("🎒 次源背包", callback_data="bag"),
+         InlineKeyboardButton("📊 活跃度", callback_data="presence")],
+        [InlineKeyboardButton("📈 进度预告", callback_data="progress_preview"),
+         InlineKeyboardButton("🏆 成就殿堂", callback_data="menu_achievement")],
         [InlineKeyboardButton("🎬 观影记录", callback_data="watch_status")],
     ]
     return buttons
@@ -103,8 +199,8 @@ def get_help_menu_layout() -> list:
     """帮助功能子菜单"""
     buttons = [
         [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
-        [InlineKeyboardButton("📖 魔法指南", callback_data="help_manual")],
-        [InlineKeyboardButton("🎓 新手教程", callback_data="tutorial_start")],
+        [InlineKeyboardButton("📖 魔法指南", callback_data="help_manual"),
+         InlineKeyboardButton("🎓 新手教程", callback_data="tutorial_start")],
         [InlineKeyboardButton("❓ 常见问题", callback_data="help_faq")],
     ]
     return buttons
@@ -191,7 +287,12 @@ async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     txt = get_menu_text(user, is_vip, u)
     buttons = get_menu_layout(is_vip)
-    await update.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+
+    # 使用 smart_reply 并注册按钮所有者
+    from utils import smart_reply, register_button_owner
+    reply = await update.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+    if reply:
+        register_button_owner(context, reply.message_id, user.id)
 
 
 async def help_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -221,8 +322,7 @@ async def help_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• <code>/gift</code> — 转赠给小伙伴\n\n"
 
         "🔮 <b>娱乐时光：</b>\n"
-        "• <code>/tarot</code> — 塔罗牌占卜\n"
-        "• <code>/poster</code> — 魔法盲盒\n"
+        "• <code>/poster</code> — 命运盲盒\n"
         "• <code>/airdrop</code> — 幸运空投(管理员)\n\n"
 
         "⚔️ <b>战斗竞技：</b>\n"
@@ -238,10 +338,136 @@ async def help_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_with_auto_delete(msg, txt)
 
 
+# ==================== Emby 菜单辅助函数 ====================
+
+async def ensure_emby_bound(user_id: int, query) -> bool:
+    """检查用户是否已绑定 Emby，未绑定则显示提示"""
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user or not user.emby_account:
+            txt = """💔 <b>【 未 缔 契 约 】</b>
+
+我看不到您的灵魂波长... (´;ω;`)
+
+━━━━━━━━━━━━━━━━━━
+📝 <b>请先发送：</b>
+<code>/bind 你的Emby用户名</code>
+
+🎁 <b>新手福利：</b>
+• 💰 150 MP 魔力
+• 🎰 3个盲盒券
+• ⚒️ 1张锻造券
+• 🗡️ 新手武器 (+10战力)
+━━━━━━━━━━━━━━━━━━
+
+<i>"绑定后即可开始冒险喵~(｡•̀ᴗ-)✧"</i>"""
+            await edit_callback_message(query, txt)
+            return False
+        return True
+
+
+async def handle_watch_recommend(query):
+    """处理观影推荐"""
+    if not await ensure_emby_bound(query.from_user.id, query):
+        return
+
+    if not EMBY_URL or not EMBY_API_KEY:
+        await edit_callback_message(query, "📭 <b>Emby 未配置</b>\n\n请联系管理员喵~")
+        return
+
+    try:
+        headers = {
+            "X-Emby-Token": EMBY_API_KEY,
+            "Accept": "application/json",
+            "User-Agent": "curl/7.68.0"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            # 获取媒体总数
+            async with session.get(f"{EMBY_URL}/Items", headers=headers,
+                                   params={"IncludeItemTypes": "Movie,Episode", "Recursive": "true", "Limit": 1},
+                                   timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    raise Exception("获取媒体失败")
+                data = await resp.json()
+                total_count = data.get('TotalRecordCount', 0)
+
+            if total_count == 0:
+                await edit_callback_message(query, "📭 媒体库空空如也喵~")
+                return
+
+            # 随机选取
+            async with session.get(f"{EMBY_URL}/Items", headers=headers,
+                                   params={"IncludeItemTypes": "Movie,Episode", "Recursive": "true",
+                                           "StartIndex": random.randint(0, max(0, total_count - 1)), "Limit": 1},
+                                   timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    raise Exception("获取推荐失败")
+                data = await resp.json()
+                items = data.get('Items', [])
+                if not items:
+                    await edit_callback_message(query, "📭 推荐获取失败喵~")
+                    return
+
+                item = items[0]
+                item_type = str(item.get('Type', '')) if not isinstance(item.get('Type'), bool) else ''
+
+                # 对于剧集，优先显示剧集名称
+                if item_type == "Episode":
+                    series_name = str(item.get('SeriesName', '')) if not isinstance(item.get('SeriesName'), bool) else ''
+                    episode_name = str(item.get('Name', '')) if not isinstance(item.get('Name'), bool) else ''
+                    item_name = f"{series_name} · {episode_name}" if series_name else (episode_name or '未知')
+                else:
+                    item_name = str(item.get('Name', '未知')) if not isinstance(item.get('Name'), bool) else '未知'
+
+                production_year = item.get('ProductionYear')
+                genres = item.get('Genres') or []
+                overview = str(item.get('Overview', '')) if not isinstance(item.get('Overview'), bool) else ''
+
+                type_icon = "🎬" if item_type == "Movie" else "📺"
+                genre_text = f"{' | '.join(str(g) for g in genres[:3] if g and not isinstance(g, bool))}" if genres else "未分类"
+
+                # 清理HTML标签
+                if overview:
+                    overview = re.sub(r'<[^>]+>', '', overview)
+                    if len(overview) > 100:
+                        overview = overview[:100] + "..."
+
+                lines = [
+                    f"🎲 <b>【 今 日 观 影 推 荐 】</b>",
+                    "━━━━━━━━━━━━━━━━━━",
+                    f"{type_icon} <b>{item_name}</b>",
+                ]
+
+                if production_year and isinstance(production_year, int):
+                    lines.append(f"📅 {production_year}")
+                if genre_text != "未分类":
+                    lines.append(f"🏷️ {genre_text}")
+
+                lines.append("━━━━━━━━━━━━━━━━━━")
+                if overview:
+                    lines.append(f"📝 {overview}")
+                    lines.append("━━━━━━━━━━━━━━━━━━")
+                lines.append(f"<i>\"今天就看这个吧 Master！(｡•̀ᴗ-)✧\"</i>")
+
+                await edit_callback_message(query, "\n".join(lines))
+
+    except Exception as e:
+        logger.exception("观影推荐失败")
+        await edit_callback_message(query, f"💔 推荐获取失败: {str(e)}")
+
+
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理按钮点击事件"""
     query = update.callback_query
     await query.answer()
+
+    # 权限检查：确保只有菜单发起者能点击按钮
+    from utils import check_button_owner, deny_button_access
+    if not check_button_owner(context, query):
+        await deny_button_access(query)
+        return
 
     data = query.data
 
@@ -479,17 +705,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = make_fake_update(query)
         await wheel_cmd(fake_update, context)
 
-    # 塔罗
-    elif data == "tarot":
-        from plugins.fun_games import tarot_gacha
-        fake_update = make_fake_update(query)
-        await tarot_gacha(fake_update, context)
-
-    # 盲盒
+    # 命运盲盒
     elif data == "poster":
-        from plugins.fun_games import tarot_gacha
+        from plugins.fun_games import blind_box_gacha
         fake_update = make_fake_update(query)
-        await tarot_gacha(fake_update, context)
+        await blind_box_gacha(fake_update, context)
 
     # 决斗说明
     elif data == "duel_info":
@@ -642,8 +862,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/gift</code> — 转赠给小伙伴\n\n"
 
             "🔮 <b>娱乐时光：</b>\n"
-            "• <code>/tarot</code> — 塔罗牌占卜\n"
-            "• <code>/poster</code> — 魔法盲盒\n"
+            "• <code>/poster</code> — 命运盲盒\n"
             "• <code>/airdrop</code> — 幸运空投(管理员)\n\n"
 
             "⚔️ <b>战斗竞技：</b>\n"
@@ -721,9 +940,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 观影推荐菜单
     elif data == "watch_rec_menu":
-        from plugins.emby_watch import cmd_watch_recommend
-        fake_update = make_fake_update(query, effective_message=query.message)
-        await cmd_watch_recommend(fake_update, context)
+        await handle_watch_recommend(query)
 
     # 观影统计菜单
     elif data == "watch_stats_menu":
@@ -783,7 +1000,7 @@ def register(app):
     sys.stdout.flush()
 
     # 主菜单按钮 - 使用 group=0 确保优先处理
-    for data in ["checkin", "bank", "shop", "bag", "hall", "presence", "forge", "video_mining",
+    for data in ["me", "checkin", "bank", "shop", "bag", "hall", "presence", "forge", "video_mining",
                  "lucky_wheel", "daily_tasks", "menu_more", "back_menu", "back_main"]:
         app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
         print(f"  ✅ 注册: {data}", flush=True)
@@ -803,7 +1020,7 @@ def register(app):
         print(f"  ✅ 注册: {data}", flush=True)
 
     # 娱乐功能（从 fun_games 导入）
-    for data in ["tarot", "poster"]:
+    for data in ["poster"]:
         app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
         print(f"  ✅ 注册: {data}", flush=True)
 

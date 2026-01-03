@@ -1,14 +1,50 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: royalbot-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=royalbot
+      - POSTGRES_USER=royalbot
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-royalbot_secure_password_change_me}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U royalbot -d royalbot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - royalbot_network
+
   royalbot:
     build: .
     container_name: royalbot
     restart: unless-stopped
-    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       - TZ=Asia/Shanghai
       - PYTHONUNBUFFERED=1
+      - DB_TYPE=postgresql
+      - DB_URL=postgresql://royalbot:${DB_PASSWORD:-royalbot_secure_password_change_me}@postgres:5432/royalbot
+      - EMBY_URL=${EMBY_URL}
+      - EMBY_API_KEY=${EMBY_API_KEY}
+      - EMBY_LIBRARY_WHITELIST=${EMBY_LIBRARY_WHITELIST}
     volumes:
       - ./bot.log:/app/bot.log
       - /tmp/royalbot.log:/tmp/royalbot.log
+      - ./data:/app/data
     working_dir: /app
     command: ["python", "main.py"]
+    networks:
+      - royalbot_network
+
+networks:
+  royalbot_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

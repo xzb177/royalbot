@@ -10,6 +10,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
 from plugins.feedback_utils import progress_bar
+from utils import edit_with_auto_delete
 
 
 def get_checkin_progress(user: UserBinding) -> dict:
@@ -193,15 +194,12 @@ async def progress_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         buttons = [
-            [InlineKeyboardButton("🔄 刷新进度", callback_data="progress_refresh")],
-            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_main")]
+            [InlineKeyboardButton("🔄 刷新进度", callback_data="progress_refresh"),
+             InlineKeyboardButton("🔙 返回主菜单", callback_data="back_main")]
         ]
 
         if query:
-            try:
-                await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
-            except Exception:
-                await query.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+            await edit_with_auto_delete(query, txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
         else:
             await msg.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
 

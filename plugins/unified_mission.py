@@ -340,8 +340,8 @@ async def mission_main(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: 
                 )
 
                 buttons = [
-                    [InlineKeyboardButton("🎲 新悬赏", callback_data="mission_refresh_bounty")],
-                    [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
+                    [InlineKeyboardButton("🎲 新悬赏", callback_data="mission_refresh_bounty"),
+                     InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
                 ]
             else:
                 txt = (
@@ -351,8 +351,8 @@ async def mission_main(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: 
                 )
 
                 buttons = [
-                    [InlineKeyboardButton("🎲 发布悬赏", callback_data="mission_post_bounty")],
-                    [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
+                    [InlineKeyboardButton("🎲 发布悬赏", callback_data="mission_post_bounty"),
+                     InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
                 ]
 
 

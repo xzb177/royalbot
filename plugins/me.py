@@ -10,7 +10,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
-from utils import edit_with_auto_delete, reply_with_auto_delete
+from utils import edit_with_auto_delete, reply_with_auto_delete, get_unbound_message
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,24 @@ RESONANCE_LINES = {
     ]
 }
 
+
+
+async def reply_for_callback(update, text, buttons=None, parse_mode='HTML'):
+    """用于回调的响应函数"""
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    
+    keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]] if buttons is None else buttons
+    
+    if query:
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=parse_mode)
+            return
+        except Exception:
+            pass
+    
+    # 回退到发送新消息
+    await reply_with_auto_delete(msg, text)
 
 async def do_resonance(user_id: int) -> dict:
     """
@@ -295,6 +313,10 @@ def get_rank_title(user, is_vip=False):
 
 
 async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    if not msg:
+        return
     try:
         user = update.effective_user
         logger.info(f"[/me] Called by user: {user.id} ({user.first_name})")
@@ -303,14 +325,12 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_data = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
             if not user_data or not user_data.emby_account:
-                msg = update.effective_message
-                if msg:
-                    await reply_with_auto_delete(
-                        msg,
-                        "💔 <b>【 魔 力 断 连 】</b>\n\n"
-                        "我看不到您的灵魂波长... (´;ω;`)\n"
-                        "👉 请使用 <code>/bind</code> 重新缔结契约！"
-                    )
+                text = await get_unbound_message()
+                keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]]
+                if query:
+                    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+                else:
+                    await reply_with_auto_delete(msg, text)
                 return
 
             # 数据准备（从数据库读取后需要在 with 块外使用，先复制出来）
@@ -324,6 +344,7 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             points = user_data.points or 0
             bank_points = user_data.bank_points or 0
             resonance_count = user_data.resonance_count if hasattr(user_data, 'resonance_count') else 0
+            last_chest_open = user_data.last_chest_open  # 复制宝箱开启时间
 
         # V3.0: 获取位阶、评级、身价（在 with 块外，使用复制的数据）
         rank_title, rank_code, rank_text, magic_power = get_rank_title(
@@ -342,6 +363,18 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_vip:
             total_mp = points + bank_points
             resonance_cost = 20  # VIP 消耗
+
+            # 检查宝箱是否可开启
+            from datetime import timedelta
+            can_open_chest_today = True
+            if last_chest_open:
+                now = datetime.now()
+                last_open = last_chest_open
+                if last_open.date() >= now.date():
+                    can_open_chest_today = False
+
+            chest_status = "🔓" if can_open_chest_today else "🔒"
+
             text = (
                 f"🌌 <b>【 星 灵 · 终 极 契 约 书 】</b>\n\n"
                 f"🥂 <b>Welcome back, my only Master.</b>\n"
@@ -362,8 +395,9 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📊 <b>共鸣次数：</b> {resonance_count} 次\n\n"
             )
             buttons = [
-                [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance"),
-                 InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge")]
+                [InlineKeyboardButton(f"💎 VIP宝箱 {chest_status}", callback_data="chest_open_from_me"),
+                 InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance")],
+                [InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge")]
             ]
         # 普通版
         else:
@@ -389,7 +423,11 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip")]
             ]
 
-        await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
+        keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="back_menu")]]
+        if query:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
+        else:
+            await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
         logger.error(f"[/me] Error: {e}", exc_info=True)
 
@@ -400,84 +438,128 @@ async def resonance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
 
     user_id = query.from_user.id
+    cost = 20  # 默认值，会被下面覆盖
 
-    with get_session() as session:
-        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+    try:
+        # 先获取用户信息和消耗金额
+        with get_session() as session:
+            user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
-        if not user or not user.emby_account:
-            await edit_with_auto_delete(
-                query,
-                "💔 <b>请先缔结魔法契约喵！</b>",
-                parse_mode='HTML'
-            )
-            return
+            if not user or not user.emby_account:
+                await edit_with_auto_delete(
+                    query,
+                    "💔 <b>请先缔结魔法契约喵！</b>",
+                    parse_mode='HTML'
+                )
+                return
 
-        is_vip = user.is_vip
-        cost = 20 if is_vip else 50
+            is_vip = user.is_vip
+            cost = 20 if is_vip else 50
 
-        if user.points < cost:
-            await edit_with_auto_delete(
-                query,
-                f"💸 <b>魔力不足喵！</b>\n\n"
-                f"灵魂共鸣需要 <b>{cost} MP</b>\n"
-                f"当前余额：{user.points} MP",
-                parse_mode='HTML'
-            )
-            return
+            if user.points < cost:
+                await edit_with_auto_delete(
+                    query,
+                    f"💸 <b>魔力不足喵！</b>\n\n"
+                    f"灵魂共鸣需要 <b>{cost} MP</b>\n"
+                    f"当前余额：{user.points} MP",
+                    parse_mode='HTML'
+                )
+                return
 
-        # 扣除消耗
-        user.points -= cost
-        session.commit()
+            # 扣除消耗
+            user.points -= cost
+            session.commit()
+            logger.info(f"[灵魂共鸣] 用户{user_id}扣费{cost}MP成功")
 
-    # 执行共鸣抽卡
-    result = await do_resonance(user_id)
+        # 即时反馈：显示共鸣中...
+        loading_msgs = [
+            "💫✨💫 正在连接灵魂波长...\n<i>\"Master...听到了吗？\"</i>",
+            "✨💫✨ 正在同步心跳频率...\n<i>\"就在这一刻...\"</i>",
+            "💫🌟💫 正在跨越次元壁...\n<i>\"灵魂与灵魂的共鸣...\"</i>",
+        ]
+        loading_msg = (
+            f"💫 <b>【 灵 魂 共 鸣 中 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{random.choice(loading_msgs)}"
+        )
+        await query.edit_message_text(loading_msg, parse_mode='HTML')
 
-    # 构建显示文本
-    r = result
-    text = (
-        f"💫 <b>【 灵 魂 共 鸣 · 结 果 】</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"{r['color']} <b>{r['name']}</b>\n"
-        f"{r['emoji']} <b>稀有度：</b> {r['type']}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"💬 <i>{r['line']}</i>\n"
-        f"━━━━━━━━━━━━━━━━━━</i>\n"
-    )
+        # 执行共鸣抽卡
+        logger.info(f"[灵魂共鸣] 用户{user_id}开始执行do_resonance")
+        result = await do_resonance(user_id)
+        logger.info(f"[灵魂共鸣] 用户{user_id} do_resonance完成: {result.get('type', 'unknown')}")
 
-    # 奖励显示
-    rewards_text = ""
-    if r['intimacy_gain'] > 0:
-        rewards_text += f"💓 <b>好感度：</b> +{r['intimacy_gain']}\n"
-    elif r['intimacy_gain'] < 0:
-        rewards_text += f"💔 <b>好感度：</b> {r['intimacy_gain']}\n"
+        # 追踪任务进度
+        try:
+            from plugins.unified_mission import track_and_check_task
+            await track_and_check_task(user_id, "resonance")
+        except Exception as e:
+            logger.error(f"[任务追踪] 错误: {e}", exc_info=True)
 
-    if r['points_gain'] > 0:
-        rewards_text += f"💰 <b>魔力：</b> +{r['points_gain']} MP\n"
+        # 构建显示文本
+        r = result
+        text = (
+            f"💫 <b>【 灵 魂 共 鸣 · 结 果 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{r['color']} <b>{r['name']}</b>\n"
+            f"{r['emoji']} <b>稀有度：</b> {r['type']}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💬 <i>{r['line']}</i>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+        )
 
-    if rewards_text:
-        text += f"\n💎 <b>获 得：</b>\n{rewards_text}"
+        # 奖励显示
+        rewards_text = ""
+        if r['intimacy_gain'] > 0:
+            rewards_text += f"💓 <b>好感度：</b> +{r['intimacy_gain']}\n"
+        elif r['intimacy_gain'] < 0:
+            rewards_text += f"💔 <b>好感度：</b> {r['intimacy_gain']}\n"
 
-    # 事件加成
-    if r['event_bonus']:
-        text += r['event_bonus']
+        if r['points_gain'] > 0:
+            rewards_text += f"💰 <b>魔力：</b> +{r['points_gain']} MP\n"
 
-    # 当前状态
-    text += (
-        f"\n━━━━━━━━━━━━━━━━━━\n"
-        f"💓 <b>当前好感度：</b> {r['new_intimacy']}\n"
-        f"💰 <b>当前魔力：</b> {r['new_points']} MP\n"
-        f"📊 <b>共鸣累计：</b> {r['total_resonance']} 次\n"
-        f"🏅 <b>共鸣称号：</b> {get_resonance_title(r['total_resonance'])}\n"
-    )
+        if rewards_text:
+            text += f"\n💎 <b>获 得：</b>\n{rewards_text}"
 
-    buttons = [[InlineKeyboardButton("🔄 再次共鸣", callback_data="me_resonance")]]
+        # 事件加成
+        if r['event_bonus']:
+            text += r['event_bonus']
 
-    await edit_with_auto_delete(
-        query,
-        text,
-        reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode='HTML'
-    )
+        # 当前状态
+        text += (
+            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"💓 <b>当前好感度：</b> {r['new_intimacy']}\n"
+            f"💰 <b>当前魔力：</b> {r['new_points']} MP\n"
+            f"📊 <b>共鸣累计：</b> {r['total_resonance']} 次\n"
+            f"🏅 <b>共鸣称号：</b> {get_resonance_title(r['total_resonance'])}\n"
+        )
+
+        buttons = [[InlineKeyboardButton("🔄 再次共鸣", callback_data="me_resonance")]]
+
+        await edit_with_auto_delete(
+            query,
+            text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode='HTML'
+        )
+
+    except Exception as e:
+        logger.error(f"[灵魂共鸣] 错误: {e}", exc_info=True)
+        # 发送错误提示给用户
+        await query.edit_message_text(
+            f"💔 <b>【 共 鸣 失 败 】</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"哎呀...灵魂连接中断了喵\n"
+            f"<i>\"请稍后再试...(´;ω;`)\"</i>",
+            parse_mode='HTML'
+        )
+        # 退还消耗的MP
+        with get_session() as session:
+            user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+            if user:
+                user.points += cost
+                session.commit()
+        return
 
 
 async def forge_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -523,9 +605,79 @@ async def forge_go_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await forge_callback(update, context)
 
 
+async def chest_from_me_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """从 /me 面板跳转到VIP宝箱"""
+    from plugins.vip_chest import chest_panel
+
+    query = update.callback_query
+    await query.answer()
+
+    # 模拟调用 chest_panel，直接发送宝箱面板
+    user_id = query.from_user.id
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+        if not user or not user.is_vip:
+            await query.edit_message_text(
+                "💔 <b>需要VIP权限才能开启宝箱喵！</b>"
+            )
+            return
+
+        # 检查是否已开启
+        from datetime import timedelta
+        can_open_chest_today = True
+        if user.last_chest_open:
+            now = datetime.now()
+            last_open = user.last_chest_open
+            if last_open.date() >= now.date():
+                can_open_chest_today = False
+
+        if not can_open_chest_today:
+            # 今天已开启
+            text = (
+                "💎 <b>【 V I P · 专 属 宝 箱 】</b>\n"
+                "━━━━━━━━━━━━━━━━━━\n\n"
+                f"🔒 <b>今日已开启</b>\n\n"
+                f"<i>\"明天再来，新的宝藏在等你哦~(｡•̀ᴗ-)✧\"</i>"
+            )
+            buttons = [[InlineKeyboardButton("🔙 返回", callback_data="me_back")]]
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode='HTML'
+            )
+            return
+
+        # 可以开启 - 显示宝箱面板
+        text = (
+            "💎 <b>【 V I P · 专 属 宝 箱 】</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            f"🔓 <b>宝箱等待开启...</b>\n\n"
+            f"✨ <b>每日必得：</b>\n"
+            f"💰 500-1000 MP (35%)\n"
+            f"🍀 幸运草 (25%)\n"
+            f"🎰 盲盒券 (15%)\n"
+            f"⚒️ 高级锻造券 (10%)\n"
+            f"💝 灵魂共鸣券 (8%)\n"
+            f"🔮 UR武器碎片 (5%)\n"
+            f"💫 1000MP暴击 (2%)\n\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "<i>\"Master，快来开启今天的宝藏吧！\"</i>"
+        )
+        buttons = [[InlineKeyboardButton("🔑 开启宝箱", callback_data="chest_open")]]
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode='HTML'
+        )
+
+
 def register(app):
     app.add_handler(CommandHandler("me", me_panel))
     app.add_handler(CommandHandler("my", me_panel))
-    app.add_handler(CallbackQueryHandler(forge_button_callback, pattern="^me_forge$"))
-    app.add_handler(CallbackQueryHandler(forge_go_callback, pattern="^forge_go$"))
-    app.add_handler(CallbackQueryHandler(resonance_callback, pattern="^me_resonance$"))
+    # me_ 相关回调使用 group=-1 确保优先处理
+    app.add_handler(CallbackQueryHandler(forge_button_callback, pattern="^me_forge$"), group=-1)
+    app.add_handler(CallbackQueryHandler(forge_go_callback, pattern="^forge_go$"), group=-1)
+    app.add_handler(CallbackQueryHandler(resonance_callback, pattern="^me_resonance$"), group=-1)
+    app.add_handler(CallbackQueryHandler(chest_from_me_callback, pattern="^chest_open_from_me$"), group=-1)

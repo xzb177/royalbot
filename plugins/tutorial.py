@@ -78,7 +78,7 @@ TUTORIAL_STEPS = {
             "• <code>/start</code> — 打开主菜单\n"
             "• <code>/duel</code> — 和其他玩家决斗\n"
             "• <code>/forge</code> — 锻造武器\n"
-            "• <code>/tarot</code> — 抽取命运盲盒\n\n"
+            "• <code>/poster</code> — 抽取命运盲盒\n\n"
             "🗼 <b>【通天塔】</b> — 无限爬塔挑战\n"
             "   输入 <code>/tower</code> 开始爬塔\n"
             "   每10层有强大Boss，击败有奖励！\n\n"
@@ -103,6 +103,7 @@ def get_tutorial_message(step: int) -> dict:
 
 async def tutorial_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """开始教程"""
+    query = getattr(update, "callback_query", None)
     msg = update.effective_message
     if not msg:
         return
@@ -122,12 +123,15 @@ async def tutorial_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     buttons = [[InlineKeyboardButton(step_data["button"], callback_data=f"tutorial_step_{step_data['next_step']}")]]
 
-    await msg.reply_html(
+    text = (
         f"{step_data['title']}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"{step_data['content']}",
-        reply_markup=InlineKeyboardMarkup(buttons)
+        f"{step_data['content']}"
     )
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
+    else:
+        await msg.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def tutorial_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,6 +175,7 @@ async def tutorial_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def quick_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """快速指南（简化版教程）"""
+    query = getattr(update, "callback_query", None)
     msg = update.effective_message
     if not msg:
         return
@@ -201,7 +206,10 @@ async def quick_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🚀 返回主菜单", callback_data="back_menu")]
     ]
 
-    await msg.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
+    else:
+        await msg.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 def register(app):

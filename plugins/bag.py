@@ -52,7 +52,11 @@ def get_item_rarity(item_name: str) -> tuple:
 
 
 async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """显示用户背包"""
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    if not msg:
+        return
+    """显示用户背包（精简版）"""
     msg = update.effective_message
     if not msg:
         return
@@ -97,16 +101,21 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     rarity_groups[emoji] = []
                 rarity_groups[emoji].append((item_name, num))
 
-            # 构建显示文本（CURSED 放最后）
+            # 构建显示文本（精简版 - 每个稀有度最多显示3个）
             items_display = ""
             for emoji in ["🌈", "🟡", "🟣", "🔵", "⚪", "💀"]:
                 group = rarity_groups[emoji]
                 if group:
                     # CURSED 特殊处理，其他从 RARITY_CONFIG 获取
                     rarity_name = "CURSED" if emoji == "💀" else RARITY_CONFIG[emoji]['name']
-                    items_display += f"\n{emoji} <b>{rarity_name}</b> 稀有度：\n"
-                    for item_name, num in group:
-                        items_display += f"   • <b>{item_name}</b> x{num}\n"
+                    items_display += f"\n{emoji} <b>{rarity_name}</b>："
+                    # 精简显示：最多显示3个，多的显示 "等X件"
+                    if len(group) > 3:
+                        display_items = group[:3]
+                        items_display += f" <b>{', '.join([f'{n}×{c}' for _, n, c in [(item, num, counts[item]) for item, num in display_items]])}</b>"
+                        items_display += f" <i>等{len(group)}种</i>"
+                    else:
+                        items_display += f" <b>{', '.join([f'{n}×{c}' for n, c in group])}</b>"
 
         # 计算总物品数
         total_items = len(raw_items.split(",")) if raw_items.strip() else 0
@@ -115,25 +124,22 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vip_badge = " 👑" if u.is_vip else ""
 
         txt = (
-            f"🎒 <b>【 魔 法 少 女 的 背 包 】</b>\n"
+            f"🎒 <b>【 背 包 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>主人：</b> {u.emby_account}{vip_badge}\n"
-            f"💎 <b>魔力结晶：</b> {u.points} MP\n"
-            f"⚔️ <b>战力值：</b> {u.attack or 10}\n"
-            f"📊 <b>藏品总数：</b> {total_items} 件\n"
+            f"👤 <b>{u.emby_account}</b>{vip_badge} | 💎 {u.points} MP\n"
+            f"⚔️ 战力: {u.attack or 10} | 📊 {total_items}件\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"📦 <b>魔法道具收藏：</b>{items_display}\n"
+            f"📦 <b>收藏</b>{items_display}\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"<i>\"快去 /poster 填充你的宝库吧喵！(｡•̀ᴗ-)✧\"</i>"
+            f"<i>\"快去 /poster 填充宝库喵~(｡•̀ᴗ-)✧\"</i>"
         )
 
         # 快捷按钮
         keyboard = [
             [
                 InlineKeyboardButton("🎰 抽盲盒", callback_data="bag_gacha"),
-                InlineKeyboardButton("🔮 占卜", callback_data="bag_tarot")
-            ],
-            [InlineKeyboardButton("📜 个人档案", callback_data="bag_me")]
+                InlineKeyboardButton("📜 个人档案", callback_data="bag_me")
+            ]
         ]
 
         await reply_with_auto_delete(
@@ -157,17 +163,6 @@ async def bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"VIP 用户享受 5 折优惠！\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"<i>\"欧气满满，抽卡必出 SSR 喵！(｡•̀ᴗ-)✧\"</i>",
-            parse_mode='HTML'
-        )
-    elif query.data == "bag_tarot":
-        await edit_with_auto_delete(
-            query,
-            f"🔮 <b>【 命 运 · 塔 罗 占 卜 】</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"请使用 <code>/tarot</code> 命令抽取今日塔罗牌喵~\n"
-            f"每天限抽一次哦！\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"<i>\"星辰会指引你的方向喵~(≧◡≦)\"</i>",
             parse_mode='HTML'
         )
     elif query.data == "bag_me":

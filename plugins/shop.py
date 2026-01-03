@@ -63,14 +63,14 @@ SHOP_ITEMS = {
     },
     "forge_small": {
         "name": "⚒️ 锻造锤(小)",
-        "desc": "免费锻造一次(普通价100MP)",
+        "desc": "免费锻造一次",
         "price": 50,
         "vip_price": 25,
         "emoji": "⚒️"
     },
     "forge_big": {
         "name": "⚒️ 锻造锤(大)",
-        "desc": "免费锻造一次+高稀有度概率UP",
+        "desc": "免费锻造+稀有度UP",
         "price": 500,
         "vip_price": 250,
         "emoji": "⚒️"
@@ -84,7 +84,7 @@ SHOP_ITEMS = {
     },
     "energy": {
         "name": "⚡ 能量药水",
-        "desc": "恢复300MP(净赚150)",
+        "desc": "恢复300MP",
         "price": 150,
         "vip_price": 75,
         "emoji": "⚡"
@@ -98,7 +98,7 @@ SHOP_ITEMS = {
     },
     "box": {
         "name": "🎁 神秘宝箱",
-        "desc": "随机开出100-300MP",
+        "desc": "随机开出100-500MP",
         "price": 100,
         "vip_price": 50,
         "emoji": "🎁",
@@ -106,9 +106,22 @@ SHOP_ITEMS = {
     },
 }
 
+# 神秘宝箱概率配置
+BOX_PROBABILITY = {
+    "🌸 神话": 0.5,
+    "🌟 传说": 1.5,
+    "🟣 史诗": 5.0,
+    "🔵 稀有": 18.0,
+    "⚪ 普通": 75.0,
+}
+
 
 async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """显示商店主页"""
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    if not msg:
+        return
+    """显示商店主页（精简但带商品说明）"""
     msg = update.effective_message
     if not msg:
         return
@@ -129,51 +142,42 @@ async def shop_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vip_badge = " 👑" if u.is_vip else ""
         discount = "5折" if u.is_vip else "原价"
 
+        # 商店界面 - 精简但包含商品名和简短描述
         txt = (
             f"🛒 <b>【 魔 法 · 商 店 】</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>客人：</b> {u.emby_account}{vip_badge}\n"
-            f"💎 <b>钱包：</b> {u.points} MP\n"
-            f"🏷️ <b>折扣：</b> {discount}\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"📜 <b>使用 /buy 商品名 购买商品</b>\n"
-            f"💡 <b>或点击下方按钮购买</b>\n"
+            f"👤 <b>{u.emby_account}</b>{vip_badge} | 💎 {u.points} MP\n"
+            f"🏷️ 折扣: {discount}\n"
             f"━━━━━━━━━━━━━━━━━━\n"
         )
 
-        # 构建商品列表
-        shop_list = ""
+        # 商品列表：商品名 + 简短描述 + 价格
         for item_id, item in SHOP_ITEMS.items():
             price = item["vip_price"] if u.is_vip else item["price"]
-            line = f"{item['emoji']} <b>{item['name']}</b> — <b>{price} MP</b>"
+            # 提取商品名（去掉emoji）
+            name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
+            desc = item['desc']
+            txt += f"{item['emoji']} <b>{name}</b> — {desc}\n"
+            txt += f"   <i>💰 {price} MP</i>\n"
 
-            # 神秘宝箱显示限购信息
-            if item_id == "box":
-                bought_count, need_reset = get_box_limit_status(u)
-                if need_reset:
-                    bought_count = 0
-                limit = 5 if u.is_vip else 3
-                remaining = max(0, limit - bought_count)
-                if remaining > 0:
-                    line += f" <i>(今日可购 {remaining}/{limit})</i>"
-                else:
-                    line += f" <i>(今日已达上限)</i>"
+        txt += f"━━━━━━━━━━━━━━━━━━\n"
+        txt += f"<i>\"点击下方按钮购买~(｡•̀ᴗ-)✧\"</i>"
 
-            shop_list += line + "\n"
-
-        txt += f"\n📦 <b>今日商品：</b>\n{shop_list}"
-        txt += "\n━━━━━━━━━━━━━━━━━━\n"
-        txt += "<i>\"欢迎光临！这里有你需要的所有魔法道具喵~(｡•̀ᴗ-)✧\"</i>"
-
-        # 构建按钮
+        # 按钮（2x4布局）
         buttons = []
         row = []
-        for i, (item_id, item) in enumerate(SHOP_ITEMS.items()):
+        for item_id, item in SHOP_ITEMS.items():
             price = item["vip_price"] if u.is_vip else item["price"]
-            row.append(InlineKeyboardButton(f"{item['emoji']} {price}MP", callback_data=f"buy_{item_id}"))
-            if len(row) == 2 or i == len(SHOP_ITEMS) - 1:
+            # 按钮显示简短名称
+            short_name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
+            # 截取前3个字
+            short_name = short_name[:3] if len(short_name) > 3 else short_name
+            row.append(InlineKeyboardButton(f"{item['emoji']} {short_name} {price}MP", callback_data=f"buy_{item_id}"))
+            if len(row) == 2:
                 buttons.append(row)
                 row = []
+        if row:
+            buttons.append(row)
 
     await msg.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
 
@@ -348,6 +352,8 @@ async def buy_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: 
                 result_msg += f"\n\n📊 <i>今日还可购买 {remaining}/{limit} 次</i>"
             else:
                 result_msg += f"\n\n📊 <i>今日购买次数已用完</i>"
+            # 添加概率说明
+            result_msg += f"\n\n💡 <b>宝箱概率</b>: 神话0.5% | 传说1.5% | 史诗5% | 稀有18% | 普通75%"
 
         elif item_id == "lucky":
             # 幸运草：设置幸运标记
@@ -564,6 +570,8 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 result_msg += f"\n\n📊 <i>今日还可购买 {remaining}/{limit} 次</i>"
             else:
                 result_msg += f"\n\n📊 <i>今日购买次数已用完</i>"
+            # 添加概率说明
+            result_msg += f"\n\n💡 <b>宝箱概率</b>: 神话0.5% | 传说1.5% | 史诗5% | 稀有18% | 普通75%"
         elif item_id == "lucky":
             u.lucky_boost = True
             result_msg = "🍀 <b>下次签到暴击率+50%！</b>"
@@ -610,14 +618,11 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     buttons = [[InlineKeyboardButton("🔙 返回商店", callback_data="shop_home")]]
-    try:
-        await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
-    except Exception:
-        await query.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+    await edit_with_auto_delete(query, txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
 
 
 async def shop_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """返回商店主页"""
+    """返回商店主页（精简但带商品说明）"""
     query = update.callback_query
     await query.answer()
 
@@ -636,56 +641,44 @@ async def shop_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # 在session关闭前保存需要的值
         user_account = u.emby_account
         points = u.points
+        is_vip = u.is_vip
 
     txt = (
         f"🛒 <b>【 魔 法 · 商 店 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>客人：</b> {user_account}{vip_badge}\n"
-        f"💎 <b>钱包：</b> {points} MP\n"
-        f"🏷️ <b>折扣：</b> {discount}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📜 <b>使用 /buy 商品名 购买商品</b>\n"
-        f"💡 <b>或点击下方按钮购买</b>\n"
+        f"👤 <b>{user_account}</b>{vip_badge} | 💎 {points} MP\n"
+        f"🏷️ 折扣: {discount}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
     )
 
-    # 构建商品列表（含限购信息）
-    shop_list = ""
+    # 商品列表：商品名 + 简短描述 + 价格
     for item_id, item in SHOP_ITEMS.items():
-        price = item["vip_price"] if u.is_vip else item["price"]
-        line = f"{item['emoji']} <b>{item['name']}</b> — <b>{price} MP</b>"
+        price = item["vip_price"] if is_vip else item["price"]
+        # 提取商品名（去掉emoji）
+        name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
+        desc = item['desc']
+        txt += f"{item['emoji']} <b>{name}</b> — {desc}\n"
+        txt += f"   <i>💰 {price} MP</i>\n"
 
-        # 神秘宝箱显示限购信息
-        if item_id == "box":
-            bought_count, need_reset = get_box_limit_status(u)
-            if need_reset:
-                bought_count = 0
-            limit = 5 if u.is_vip else 3
-            remaining = max(0, limit - bought_count)
-            if remaining > 0:
-                line += f" <i>(今日可购 {remaining}/{limit})</i>"
-            else:
-                line += f" <i>(今日已达上限)</i>"
-
-        shop_list += line + "\n"
-
-    txt += f"\n📦 <b>今日商品：</b>\n{shop_list}"
-    txt += "\n━━━━━━━━━━━━━━━━━━\n"
-    txt += "<i>\"欢迎光临！这里有你需要的所有魔法道具喵~(｡•̀ᴗ-)✧\"</i>"
+    txt += f"━━━━━━━━━━━━━━━━━━\n"
+    txt += f"<i>\"点击下方按钮购买~(｡•̀ᴗ-)✧\"</i>"
 
     buttons = []
     row = []
-    for i, (item_id, item) in enumerate(SHOP_ITEMS.items()):
-        price = item["vip_price"] if u.is_vip else item["price"]
-        row.append(InlineKeyboardButton(f"{item['emoji']} {price}MP", callback_data=f"buy_{item_id}"))
-        if len(row) == 2 or i == len(SHOP_ITEMS) - 1:
+    for item_id, item in SHOP_ITEMS.items():
+        price = item["vip_price"] if is_vip else item["price"]
+        # 按钮显示简短名称
+        short_name = item['name'].split(' ', 1)[1] if ' ' in item['name'] else item['name']
+        # 截取前3个字
+        short_name = short_name[:3] if len(short_name) > 3 else short_name
+        row.append(InlineKeyboardButton(f"{item['emoji']} {short_name} {price}MP", callback_data=f"buy_{item_id}"))
+        if len(row) == 2:
             buttons.append(row)
             row = []
+    if row:
+        buttons.append(row)
 
-    try:
-        await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
-    except Exception:
-        pass
+    await edit_with_auto_delete(query, txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
 
 
 def register(app):

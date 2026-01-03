@@ -1,9 +1,9 @@
 """
 娱乐功能模块 - 魔法少女版
-- 🔮 命运塔罗/盲盒 (Emby电影抽取)
+- 🎰 命运盲盒 (Emby电影抽取)
 - ⚔️ 魔法少女决斗 (PVP互动)
 
-塔罗盲盒系统：
+盲盒系统：
 - 从 Emby 媒体库随机抽取电影
 - 根据评分+随机因素判定稀有度
 - 抽到的电影存入背包
@@ -20,6 +20,11 @@ from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
 from database import get_session, UserBinding
 from utils import reply_with_auto_delete
 from config import Config
+
+# 正面反馈增强
+from plugins.feedback_utils import get_crit_effect, success_burst, get_rarity_effect
+from plugins.quotes import get_duel_victory_quote, get_duel_defeat_comfort, random_cute_emoji
+from plugins.lucky_events import check_lucky_with_streak, calculate_lucky_reward
 
 logger = logging.getLogger(__name__)
 
@@ -137,33 +142,45 @@ def get_rarity_comment(rarity: str, score: float) -> str:
 
 
 # ==========================================
-# 🔮 统一塔罗盲盒系统
+# 🎰 命运盲盒系统
 # ==========================================
 
-async def tarot_gacha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def blind_box_gacha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    命运塔罗/盲盒 - 统一抽取系统
+    命运盲盒 - 统一抽取系统
     """
-    logger.info("[tarot] 命令被调用")
+    logger.info("[gacha] 命令被调用")
+    query = getattr(update, "callback_query", None)
     msg = update.effective_message
     if not msg:
         return
 
     user_id = update.effective_user.id
-    logger.info(f"[tarot] 用户ID: {user_id}")
+    logger.info(f"[gacha] 用户ID: {user_id}")
 
-    # 先发个"洗牌中"动画
-    loading_msg = await msg.reply_html("🔮 <b>命运之轮正在转动...</b>\n<i>(正在从星海中抽取您的专属卡牌)</i>")
-    logger.info("[tarot] loading_msg 已发送")
+    # 回调模式：显示加载状态
+    if query:
+        try:
+            await query.edit_message_text("🔮 <b>命运之轮正在转动...</b>\n<i>(正在从星海中抽取您的专属卡牌)</i>", parse_mode='HTML')
+        except Exception:
+            pass
+    else:
+        # 命令模式：发送加载消息
+        loading_msg = await msg.reply_html("🎰 <b>命运之轮正在转动...</b>\n<i>(正在从星海中抽取您的专属卡牌)</i>")
+    logger.info("[gacha] loading_msg 已发送")
 
     with get_session() as session:
-        logger.info("[tarot] 数据库 session 已获取")
+        logger.info("[gacha] 数据库 session 已获取")
         user = session.query(UserBinding).filter_by(tg_id=user_id).first()
-        logger.info(f"[tarot] 用户查询完成: {user}")
+        logger.info(f"[gacha] 用户查询完成: {user}")
 
         # 检查是否已绑定
         if not user or not user.emby_account:
-            await loading_msg.edit_text("💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来~")
+            error_text = "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来~"
+            if query:
+                await query.edit_message_text(error_text, parse_mode='HTML')
+            else:
+                await loading_msg.edit_text(error_text)
             return
 
         # 检查是否有免费次数（每日一次）
@@ -187,22 +204,30 @@ async def tarot_gacha(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 检查余额
         if cost > 0 and user.points < cost:
-            await loading_msg.edit_text(
+            error_text = (
                 f"💸 <b>魔力不足喵！</b>\n\n"
                 f"抽取需要 <b>{cost} MP</b>\n"
                 f"您当前余额：<b>{user.points} MP</b>\n\n"
                 f"<i>\"快去签到攒钱吧喵！(ง •_•)ง\"</i>"
             )
+            if query:
+                await query.edit_message_text(error_text, parse_mode='HTML')
+            else:
+                await loading_msg.edit_text(error_text)
             return
 
-        logger.info("[tarot] 开始获取电影")
+        logger.info("[gacha] 开始获取电影")
         # 从 Emby 获取随机电影（异步版本）
         movie = await fetch_random_movie()
         if not movie:
-            await loading_msg.edit_text("💨 <b>虚空中什么也没有...</b>\n\n<i>(Emby 连接失败或媒体库为空)</i>")
+            error_text = "💨 <b>虚空中什么也没有...</b>\n\n<i>(Emby 连接失败或媒体库为空)</i>"
+            if query:
+                await query.edit_message_text(error_text, parse_mode='HTML')
+            else:
+                await loading_msg.edit_text(error_text)
             return
 
-        logger.info(f"[tarot] 获取到电影: {movie.get('Name')}")
+        logger.info(f"[gacha] 获取到电影: {movie.get('Name')}")
 
         # 计算稀有度
         rarity_code, rarity_emoji, rarity_name, bonus = calculate_rarity(movie)
@@ -238,10 +263,10 @@ async def tarot_gacha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         points = user.points
         user_id = user.tg_id
         session.commit()
-        logger.info("[tarot] 数据库提交完成")
+        logger.info("[gacha] 数据库提交完成")
 
     # 追踪任务进度（在 with 块外）
-    await track_activity_wrapper(user_id, "tarot")
+    await track_activity_wrapper(user_id, "poster")
 
     # 构建卡片消息（在 with 块外）
     score = movie.get('CommunityRating') or 0
@@ -257,7 +282,7 @@ async def tarot_gacha(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 构建标题
     caption = (
-        f"🃏 <b>【 命 运 塔 罗 · 翻 牌 】</b>\n"
+        f"🎰 <b>【 命 运 盲 盒 · 开 启 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🎬 <b>{title}</b> ({year})\n\n"
         f"🏅 <b>稀有度：</b> {rarity_emoji} <b>{rarity_name}</b>\n"
@@ -281,50 +306,51 @@ async def tarot_gacha(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 按钮
     buttons = [
-        [InlineKeyboardButton("🔄 再抽一次 (25/50 MP)", callback_data="tarot_retry")],
-        [InlineKeyboardButton("🎒 查看背包", callback_data="view_bag")]
+        [InlineKeyboardButton("🔄 再抽一次 (25/50 MP)", callback_data="gacha_retry"),
+         InlineKeyboardButton("🎒 查看背包", callback_data="view_bag")]
     ]
 
-    # 删除加载消息，发送卡片
-    await loading_msg.delete()
-    logger.info("[tarot] 发送结果消息")
+    logger.info("[gacha] 发送结果消息")
 
-    # 先发送文本版本
-    await msg.reply_html(
-        caption,
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    # 回调模式：编辑原消息；命令模式：删除加载消息并发新消息
+    if query:
+        await query.edit_message_text(caption, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
+    else:
+        await loading_msg.delete()
+        await msg.reply_html(caption, reply_markup=InlineKeyboardMarkup(buttons))
 
-    # 异步发送图片（不阻塞）
-    try:
-        import asyncio
-        await asyncio.wait_for(
-            msg.reply_photo(
-                photo=poster_url,
-                caption=f"🎬 {title} ({year}) - {rarity_emoji} {rarity_name}",
-                parse_mode='HTML'
-            ),
-            timeout=10.0
-        )
-    except asyncio.TimeoutError:
-        logger.warning(f"图片发送超时: {poster_url}")
-    except Exception as e:
-        logger.error(f"图片发送失败: {e}")
+    # 异步发送图片（仅命令模式）
+    if not query:
+        try:
+            import asyncio
+            await asyncio.wait_for(
+                msg.reply_photo(
+                    photo=poster_url,
+                    caption=f"🎬 {title} ({year}) - {rarity_emoji} {rarity_name}",
+                    parse_mode='HTML'
+                ),
+                timeout=10.0
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"图片发送超时: {poster_url}")
+        except Exception as e:
+            logger.error(f"图片发送失败: {e}")
 
 
-async def tarot_retry_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def gacha_retry_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """再抽一次按钮回调"""
     query = update.callback_query
     await query.answer("🔄 命运转动中...")
 
-    # 创建一个伪造的 update 对象
+    # 创建一个伪造的 update 对象，包含 callback_query 以支持编辑模式
     fake_update = type('Update', (), {
         'effective_message': query.message,
         'effective_user': query.from_user,
         'message': query.message,
+        'callback_query': query,
     })()
 
-    await tarot_gacha(fake_update, context)
+    await blind_box_gacha(fake_update, context)
 
 
 async def view_bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -870,9 +896,6 @@ async def process_duel_battle(query, context: ContextTypes.DEFAULT_TYPE, duel_da
             if achievement_msgs:
                 session.commit()
 
-            # 检查悬赏任务进度（决斗类型）
-            await check_duel_bounty_progress(update, context, winner.tg_id)
-
             # 追踪每日任务进度（决斗）
             await track_activity_wrapper(win_id, "duel")
             await track_activity_wrapper(lose_id, "duel")
@@ -901,23 +924,64 @@ async def process_duel_battle(query, context: ContextTypes.DEFAULT_TYPE, duel_da
 
             streak_bonus_text = f"\n🎁 <b>连胜奖励：</b> +{streak_bonus} MP！" if streak_bonus > 0 else ""
 
-        # 在with块外发送消息
+        # === 正面反馈增强：连胜暴击检测 ===
+        lucky_result = check_lucky_with_streak(winner_streak, winner.is_vip)
+        crit_effect = ""
+        crit_bonus = 0
+
+        if lucky_result["triggered"]:
+            crit_multiplier = lucky_result["multiplier"]
+            crit_effect = lucky_result["effect"]
+            crit_bonus = bet * (crit_multiplier - 1)
+            # 额外奖励（需要在新的 session 中添加）
+            with get_session() as bonus_session:
+                bonus_winner = bonus_session.query(UserBinding).filter_by(tg_id=win_id).first()
+                if bonus_winner:
+                    bonus_winner.points += crit_bonus
+                    bonus_winner.total_earned = (bonus_winner.total_earned or 0) + crit_bonus
+                    bonus_session.commit()
+
+        # 在with块外发送消息（增强版）
+        # 构建增强的决斗结束消息
+        title_effect = success_burst(2) if lucky_result["triggered"] else ""
+        duel_end_title = f"⚔️💥 【 决 斗 结 束 】💥⚔️" if lucky_result["triggered"] else "⚔️ <b>【 决 斗 结 束 】</b>"
+
+        message_lines = [
+            duel_end_title,
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"🌟 战斗过程 🌟",
+            battle_text,
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"🏆 <b>胜者：</b> {win_name}",
+            f"🔥 <b>连胜：</b> {winner_streak} 场！",
+            f"💰 <b>收益：</b> +{bet} MP{power_up_text_value}",
+        ]
+
+        # 添加暴击效果
+        if crit_effect:
+            message_lines.append(f"\n{title_effect}")
+            message_lines.append(f"{crit_effect}")
+            message_lines.append(f"💰💰💰 额外 +{crit_bonus} MP 💰💰💰")
+            message_lines.append(f"💰 总计收益：+{bet + crit_bonus} MP")
+        elif streak_bonus > 0:
+            message_lines.append(streak_bonus_text)
+
+        message_lines.append(f"\n{lose_text}")
+
+        if achievement_msgs:
+            message_lines.append(f"\n🏆 " + "\n".join(achievement_msgs[:2]))
+
+        message_lines.extend([
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            get_duel_victory_quote(win_name) if lucky_result["triggered"] else f"<i>\"多么精彩的战斗！看板娘看得热血沸腾喵！{random_cute_emoji()}\"</i>"
+        ])
+
         await query.edit_message_text(
-            f"⚔️ <b>【 决 斗 结 束 】</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"{battle_text}\n"
-            f"👑 <b>胜者：</b> {win_name}\n"
-            f"🔥 <b>连胜：</b> {winner_streak} 场！\n"
-            f"💰 <b>收益：</b> +{bet} MP{power_up_text_value}"
-            + streak_bonus_text + "\n\n"
-            f"{lose_text}\n"
-            + ("\n🏆 " + "\n".join(achievement_msgs[:2]) + "\n" if achievement_msgs else "")
-            + "━━━━━━━━━━━━━━━━━━\n"
-            f"<i>\"多么精彩的战斗！看板娘看得热血沸腾喵！\"</i>",
+            "\n".join(message_lines),
             parse_mode='HTML'
         )
         delete_duel_data(context, duel_id)
-        logger.info(f"决斗结束: duel_id={duel_id}, winner={win_name}, streak={winner_streak}")
+        logger.info(f"决斗结束: duel_id={duel_id}, winner={win_name}, streak={winner_streak}, crit={crit_effect}")
 
     except Exception as e:
         logger.error(f"决斗处理失败: {e}", exc_info=True)
@@ -1038,15 +1102,14 @@ def generate_battle_text(cha_name: str, cha_atk: int, cha_wep: str,
 # 🔌 注册模块
 # ==========================================
 def register(app):
-    # 塔罗/盲盒统一命令
-    app.add_handler(CommandHandler("tarot", tarot_gacha))
-    app.add_handler(CommandHandler("poster", tarot_gacha))
-    app.add_handler(CommandHandler("fate", tarot_gacha))
+    # 盲盒命令（poster 和 fate 均指向同一个函数）
+    app.add_handler(CommandHandler("poster", blind_box_gacha))
+    app.add_handler(CommandHandler("fate", blind_box_gacha))
     # 决斗命令
     app.add_handler(CommandHandler("duel", duel_start))
     app.add_handler(CommandHandler("duelstats", duel_stats))
     # 决斗回调：duel_accept_xxx, duel_reject_xxx, duel_cancel_xxx，xxx为8位字符
     app.add_handler(CallbackQueryHandler(duel_callback, pattern=r"^duel_(accept|reject|cancel)_\w{8}$"))
-    # 塔罗盲盒回调
-    app.add_handler(CallbackQueryHandler(tarot_retry_callback, pattern="^tarot_retry$"))
+    # 盲盒回调
+    app.add_handler(CallbackQueryHandler(gacha_retry_callback, pattern="^gacha_retry$"))
     app.add_handler(CallbackQueryHandler(view_bag_callback, pattern="^view_bag$"))

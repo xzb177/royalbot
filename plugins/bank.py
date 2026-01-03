@@ -50,6 +50,10 @@ def calculate_interest(user: UserBinding, days: int = None) -> int:
 
 
 async def bank_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    if not msg:
+        return
     """银行主面板"""
     msg = update.effective_message
     if not msg:
@@ -61,7 +65,7 @@ async def bank_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not user or not user.emby_account:
-            await reply_with_auto_delete(msg, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结契约喵！")
+            await reply_for_callback(update, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结契约喵！")
             return
 
         total = user.points + user.bank_points
@@ -129,19 +133,23 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if amount <= 0:
             raise ValueError
     except:
-        await reply_with_auto_delete(msg, "⚠️ <b>魔法咒语念错啦喵！</b>\n示例：<code>/deposit 100</code>")
+        await reply_for_callback(update, "⚠️ <b>魔法咒语念错啦喵！</b>\n示例：<code>/deposit 100</code>")
         return
 
     with get_session() as session:
         u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
         if not u or u.points < amount:
-            await reply_with_auto_delete(msg, f"💸 <b>魔力不足喵！</b>\n\n钱包里只有 {u.points if u else 0} MP~")
+            await reply_for_callback(update, f"💸 <b>魔力不足喵！</b>\n\n钱包里只有 {u.points if u else 0} MP~")
             return
 
         u.points -= amount
         u.bank_points += amount
         session.commit()
+
+        # 追踪任务进度
+        from plugins.unified_mission import track_and_check_task
+        await track_and_check_task(user.id, "bank")
 
         await reply_with_auto_delete(
             msg,
@@ -164,14 +172,14 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if amount <= 0:
             raise ValueError
     except:
-        await reply_with_auto_delete(msg, "⚠️ <b>魔法咒语念错啦喵！</b>\n示例：<code>/withdraw 100</code>")
+        await reply_for_callback(update, "⚠️ <b>魔法咒语念错啦喵！</b>\n示例：<code>/withdraw 100</code>")
         return
 
     with get_session() as session:
         u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
         if not u or u.bank_points < amount:
-            await reply_with_auto_delete(msg, f"🏦 <b>金库魔力不足喵！</b>\n\n金库里只有 {u.bank_points if u else 0} MP~")
+            await reply_for_callback(update, f"🏦 <b>金库魔力不足喵！</b>\n\n金库里只有 {u.bank_points if u else 0} MP~")
             return
 
         # 计算并结算利息
@@ -188,6 +196,10 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u.bank_points -= amount
         u.points += actual + total_interest  # 取款金额 + 利息
         session.commit()
+
+        # 追踪任务进度
+        from plugins.unified_mission import track_and_check_task
+        await track_and_check_task(user.id, "bank")
 
         interest_text = f"\n💰 <b>利息收入：</b> +{total_interest} MP" if total_interest > 0 else ""
 

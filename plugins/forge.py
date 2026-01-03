@@ -110,6 +110,10 @@ def _generate_weapon(boost_rarity=False, pity_counter=0):
 
 
 async def forge_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    if not msg:
+        return
     """开始锻造 - 第一步：扣费并生成武器"""
     msg = update.effective_message
     query = update.callback_query if hasattr(update, 'callback_query') and update.callback_query else None
@@ -463,7 +467,7 @@ async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
         if not u or not u.emby_account:
-            await reply_with_auto_delete(msg, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
+            await reply_for_callback(update, "👻 <b>请先 /bind 缔结魔法契约喵！</b>")
             return
 
         weapon = u.weapon if u.weapon else "赤手空拳"

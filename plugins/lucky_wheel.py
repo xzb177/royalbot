@@ -31,6 +31,9 @@ WHEEL_PRIZES = [
     ("nothing", 0, 5, "💨"),       # 空气 - 稍微安慰一下
 ]
 
+# 转盘概率说明
+WHEEL_PROBABILITY = """💡 <b>概率</b>: 5MP(26%) | 10MP(21%) | 20MP(16%) | 50MP(8%) | 100MP(4%) | 200MP(2%) | 500MP(0.5%) | 道具各(4%)"""
+
 def get_today():
     return datetime.now().date()
 
@@ -81,7 +84,11 @@ def spin_wheel(user: UserBinding, is_vip_bonus: bool = False) -> dict:
 
 
 async def wheel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """幸运转盘主命令"""
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    if not msg:
+        return
+    """幸运转盘主命令（精简版）"""
     msg = update.effective_message
     if not msg:
         return
@@ -91,7 +98,7 @@ async def wheel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not u or not u.emby_account:
-            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>")
+            await reply_for_callback(update, "💔 <b>请先绑定账号喵！</b>")
             return
 
         today = get_today()
@@ -110,41 +117,31 @@ async def wheel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             free_spins += 1  # VIP额外一次
 
         vip_badge = " 👑" if u.is_vip else ""
-        spin_emoji = "🎡" if not spun_today else "✅"
         emby_account = u.emby_account
         points = u.points
 
     txt = (
         f"🎡 <b>【 幸 运 大 转 盘 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>玩家：</b> {emby_account}{vip_badge}\n"
-        f"💰 <b>钱包：</b> {points} MP\n"
+        f"👤 <b>{emby_account}</b>{vip_badge} | 💎 {points} MP\n"
         f"━━━━━━━━━━━━━━━━━━\n"
     )
 
     if spun_today:
         txt += (
-            f"{spin_emoji} <b>今日已免费抽奖</b>\n\n"
-            f"明天再来碰碰运气吧！\n"
-            f"<i>\"成为VIP可获得每日2次抽奖机会哦！\"</i>"
+            f"✅ <b>今日已抽奖</b>\n\n"
+            f"明天再来吧！"
         )
     else:
         txt += (
-            f"{spin_emoji} <b>免费次数：</b> {free_spins} 次\n\n"
-            f"💎 <b>奖池包含：</b>\n"
-            f"   • 💎 MP奖励 (5~500)\n"
-            f"   • 🍀 幸运草\n"
-            f"   • 🛡️ 防御卷轴\n"
-            f"   • 🔮 各种道具券\n\n"
-            f"<i>\"点击下方按钮开始抽奖！\"</i>"
+            f"🎲 <b>免费次数：</b> {free_spins} 次\n\n"
+            f"{WHEEL_PROBABILITY}\n\n"
+            f"<i>\"点击下方按钮开始！\"</i>"
         )
 
     buttons = []
     if not spun_today:
         buttons.append([InlineKeyboardButton("🎡 开始抽奖", callback_data="wheel_spin")])
-
-    if free_spins > 0:
-        buttons.append([InlineKeyboardButton("🎲 抽一次", callback_data="wheel_spin")])
 
     await msg.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None)
 
@@ -223,6 +220,17 @@ async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         session.commit()
 
+        # 追踪任务进度
+        from plugins.unified_mission import track_and_check_task
+        await track_and_check_task(user_id, "wheel")
+        # 检查成就（传入context和chat_id用于广播）
+        from plugins.achievement import check_all_achievements
+        from telegram import Chat
+        chat_id = query.message.chat_id if query.message.chat.type != Chat.PRIVATE else None
+        new_achievements = check_all_achievements(u, session, context, chat_id)
+        if new_achievements:
+            session.commit()
+
         # 保存需要在session关闭后使用的值
         points = u.points
         is_jackpot = result["is_jackpot"]
@@ -250,10 +258,7 @@ async def wheel_spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     buttons = [[InlineKeyboardButton("🔙 返回", callback_data="wheel_back")]]
 
-    try:
-        await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
-    except Exception:
-        await query.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
+    await edit_with_auto_delete(query, txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
 
 
 async def wheel_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -300,11 +305,7 @@ async def wheel_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not spun_today:
         buttons.append([InlineKeyboardButton("🎡 开始抽奖", callback_data="wheel_spin")])
 
-
-    try:
-        await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None, parse_mode='HTML')
-    except Exception:
-        pass
+    await edit_with_auto_delete(query, txt, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None, parse_mode='HTML')
 
 
 def register(app):

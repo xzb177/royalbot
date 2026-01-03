@@ -73,6 +73,10 @@ def format_rank_list(users, current_user_id, start_rank=1):
 
 
 async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = getattr(update, "callback_query", None)
+    msg = update.effective_message
+    if not msg:
+        return
     """荣耀殿堂 - 战力排行榜"""
     msg = update.effective_message
     if not msg:
@@ -84,7 +88,7 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not current_user or not current_user.emby_account:
-            await reply_with_auto_delete(msg, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
+            await reply_for_callback(update, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
             return
 
         # 获取所有有战力的用户
@@ -162,8 +166,10 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     buttons = []
     if weapon:
-        buttons.append([InlineKeyboardButton("⚔️ 我的装备", callback_data="my_weapon")])
-    buttons.append([InlineKeyboardButton("⚒️ 去炼金", callback_data="forge")])
+        buttons.append([InlineKeyboardButton("⚔️ 我的装备", callback_data="my_weapon"),
+                       InlineKeyboardButton("⚒️ 去炼金", callback_data="forge")])
+    else:
+        buttons.append([InlineKeyboardButton("⚒️ 去炼金", callback_data="forge")])
 
     await reply_with_auto_delete(
         msg,
