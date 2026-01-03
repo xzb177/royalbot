@@ -180,12 +180,12 @@ async def blind_box_gacha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 回调模式：显示加载状态
     if query:
         try:
-            await query.edit_message_text("🔮 <b>命运之轮正在转动...</b>\n<i>(正在从星海中抽取您的专属卡牌)</i>", parse_mode='HTML')
+            await query.edit_message_text("🔮 <b>命运之轮正在转动...</b>\n<i>\"正在从星海中抽取您的专属卡牌喵~\"</i>", parse_mode='HTML')
         except Exception:
             pass
     else:
         # 命令模式：发送加载消息
-        loading_msg = await msg.reply_html("🎰 <b>命运之轮正在转动...</b>\n<i>(正在从星海中抽取您的专属卡牌)</i>")
+        loading_msg = await msg.reply_html("🎰 <b>命运之轮正在转动...</b>\n<i>\"正在从星海中抽取您的专属卡牌喵~\"</i>")
     logger.info("[gacha] loading_msg 已发送")
 
     with get_session() as session:
@@ -1100,6 +1100,7 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.id != duel_data["challenger_id"]:
             await query.answer("只有发起者才能取消决斗喵！", show_alert=True)
             return
+        await query.answer("❌ 已取消")
         await query.edit_message_text(
             "❌ <b>决斗已取消</b>\n\n<i>\"发起者主动取消了这场决斗...\"</i>",
             parse_mode='HTML'
@@ -1113,6 +1114,7 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "reject":
+        await query.answer("🏳️ 已拒绝")
         # 认怂，挑战者获得少量安慰奖
         consolation = max(5, duel_data["bet"] // 10)  # 10% 安慰奖
         try:
@@ -1142,6 +1144,7 @@ async def duel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "accept":
+        await query.answer("⚔️ 决斗中...")
         await process_duel_battle(query, context, duel_data, duel_id, user)
 
 

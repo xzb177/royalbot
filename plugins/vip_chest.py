@@ -367,19 +367,7 @@ async def chest_open_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"[宝箱任务追踪] 错误: {e}", exc_info=True)
 
 
-async def me_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """返回到 /me 面板"""
-    query = update.callback_query
-    await query.answer()
-
-    # 简单提示用户使用 /me 命令
-    await query.edit_message_text(
-        "💫 请使用 /me 命令返回个人面板",
-        parse_mode='HTML'
-    )
-
-
 def register(app):
     app.add_handler(CommandHandler("chest", chest_panel))
     app.add_handler(CallbackQueryHandler(chest_open_callback, pattern="^chest_open$"))
-    app.add_handler(CallbackQueryHandler(me_back_callback, pattern="^me_back$"))
+    # me_back 由 me.py 处理

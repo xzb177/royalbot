@@ -387,11 +387,12 @@ async def claim_watch_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if claimable_minutes <= 0:
             await query.edit_message_text(
-                f"🎬 【观影奖励】\n"
+                f"🎬 <b>【 观 影 奖 励 】</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"💔 今天还没有新的观影记录喵~\n\n"
                 f"📊 今日已观影: {today_minutes} 分钟\n"
-                f"💰 已领取: {daily_watch // get_minutes_per_mp(user)} MP"
+                f"💰 已领取: {daily_watch // get_minutes_per_mp(user)} MP",
+                parse_mode='HTML'
             )
             return
 
@@ -410,14 +411,17 @@ async def claim_watch_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         session.commit()
 
     await query.edit_message_text(
-        f"🎬 【观影奖励领取成功】\n"
+        f"🎬 <b>【 观 影 奖 励 领 取 成 功 】</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"✨ 观影时长: +{claimable_minutes} 分钟\n"
         f"💰 获得: +{mp_reward} MP\n"
         f"{'👑 VIP加成 ×1.5' if user.is_vip else ''}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"💰 余额: {user.points} MP\n"
-        f"📊 今日观影: {today_minutes} 分钟"
+        f"📊 今日观影: {today_minutes} 分钟\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>\"感谢使用 Emby 影音服务喵~\"</i>",
+        parse_mode='HTML'
     )
 
 

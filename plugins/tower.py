@@ -411,6 +411,7 @@ async def tower_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 def register(app):
     app.add_handler(CommandHandler("tower", tower_panel))
+    app.add_handler(CallbackQueryHandler(lambda u, c: tower_panel(u, c), pattern="^tower$"))  # 从菜单进入
     app.add_handler(CallbackQueryHandler(lambda u, c: tower_enter_callback(u, c), pattern="^tower_enter$"))
     app.add_handler(CallbackQueryHandler(lambda u, c: tower_fight_callback(u, c), pattern="^tower_fight$"))
     app.add_handler(CallbackQueryHandler(lambda u, c: tower_home_callback(u, c), pattern="^tower_home$"))

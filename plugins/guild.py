@@ -10,7 +10,7 @@ import random
 import logging
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from database import get_session, UserBinding, Guild
 from utils import reply_with_auto_delete
 
@@ -46,6 +46,143 @@ GUILD_NAME_MAX_LEN = 12
 # ==========================================
 # 工具函数
 # ==========================================
+
+async def get_guild_list_panel(user: UserBinding, session, first_name: str) -> tuple:
+    """获取公会列表面板（用于编辑消息）"""
+    guilds = session.query(Guild).order_by(Guild.total_power.desc()).limit(5).all()
+
+    lines = [
+        "🏰 <b>【 公 会 列 表 】</b>",
+        "━━━━━━━━━━━━━━━━━━",
+        f"👤 <b>您的状态：</b> 未加入公会",
+        "",
+        "🏆 <b>公会排行榜 (Top 5)：</b>",
+        ""
+    ]
+
+    # 按钮 - 每行一个公会
+    buttons = []
+
+    for idx, guild in enumerate(guilds, 1):
+        level_info = get_guild_level_info(guild.level or 1)
+        medal = ["🥇", "🥈", "🥉"][idx - 1] if idx <= 3 else f"{idx}."
+        can_join = (guild.member_count or 0) < (guild.max_members or 20)
+        status = "📮可申请" if can_join else "🚫已满"
+
+        lines.append(
+            f"{medal} <b>{guild.name}</b>"
+        )
+        lines.append(
+            f"    Lv.{guild.level or 1} | ⚡{guild.total_power or 0} | 👥{guild.member_count or 0}/{guild.max_members or 20} | {status}"
+        )
+        lines.append("")
+
+        # 为每个公会添加查看/申请按钮
+        btn_text = f"📮 申请" if can_join else f"🚫 满员"
+        btn_data = f"guild_apply_{guild.id}"
+        if can_join:
+            buttons.append([InlineKeyboardButton(f"{medal} {guild.name} ({guild.member_count or 0}/{guild.max_members or 20})", callback_data=btn_data)])
+        else:
+            buttons.append([InlineKeyboardButton(f"{medal} {guild.name} (已满)", callback_data=f"guild_view_{guild.id}")])
+
+    lines.extend([
+        "━━━━━━━━━━━━━━━━━━",
+        "<i>\"加入公会，与其他魔法师一起战斗！\"</i>"
+    ])
+
+    # 底部按钮
+    buttons.append([InlineKeyboardButton("➕ 创建公会", callback_data="guild_create")])
+    buttons.append([InlineKeyboardButton("🏆 更多排行", callback_data="guild_rank")])
+    buttons.append([InlineKeyboardButton("🔙 返回", callback_data="guild_back")])
+
+    return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
+async def get_guild_info_panel(guild: Guild, user: UserBinding, session, first_name: str) -> tuple:
+    """获取公会信息面板（用于编辑消息）"""
+    level_info = get_guild_level_info(guild.level or 1)
+    benefits = get_guild_benefit(guild)
+    guild_power = calculate_guild_power(guild)
+    is_leader = (guild.leader_id == user.tg_id)
+
+    # 获取公会成员信息
+    member_list = []
+    member_ids = []
+    if guild.members:
+        member_ids = [int(uid) for uid in guild.members.split(",") if uid]
+        for uid in member_ids[:10]:  # 只显示前10个
+            m = session.query(UserBinding).filter_by(tg_id=uid).first()
+            if m:
+                role = "👑会长" if uid == guild.leader_id else "👤成员"
+                member_list.append(f"{role} {m.first_name or '神秘人'} (⚡{m.attack or 0})")
+
+    members_text = "\n".join(member_list) if member_list else "暂无成员"
+    if len(member_ids) > 10:
+        members_text += f"\n... 还有 {len(member_ids) - 10} 位成员"
+
+    lines = [
+        "🏰 <b>【 公 会 信 息 】</b>",
+        "━━━━━━━━━━━━━━━━━━",
+        f"🏛️ <b>公会名称：</b> {guild.name}",
+        f"👑 <b>公会会长：</b> {guild.leader_name or '未知'}",
+        f"📊 <b>公会等级：</b> Lv.{guild.level or 1} {level_info['name']}",
+        f"⭐ <b>公会经验：</b> {guild.exp or 0}/{get_guild_next_level_exp(guild.level or 1)}",
+        f"👥 <b>成员数量：</b> {guild.member_count or 0}/{guild.max_members or 20}",
+        f"⚡ <b>公会战力：</b> {guild_power}",
+        f"💰 <b>公会金库：</b> {guild.treasury or 0} MP",
+        f"📅 <b>创建时间：</b> {(guild.created_at or datetime.now()).strftime('%Y-%m-%d')}",
+        "",
+        "🎁 <b>公会福利：</b>",
+    ]
+
+    if benefits["checkin_bonus"] > 0:
+        lines.append(f"   ✨ 签到奖励 +{benefits['checkin_bonus']} MP")
+    if benefits["forge_discount"] < 1.0:
+        lines.append(f"   ⚒️ 锻造 {int(benefits['forge_discount'] * 10)} 折")
+    if benefits["gacha_discount"] < 1.0:
+        lines.append(f"   🎰 抽卡 {int(benefits['gacha_discount'] * 10)} 折")
+    if benefits["daily_gift"]:
+        lines.append(f"   🎁 每日礼包可领取")
+
+    if guild.announcement:
+        lines.extend([
+            "",
+            f"📢 <b>公会公告：</b>",
+            f"   {guild.announcement}"
+        ])
+
+    lines.extend([
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "👥 <b>公会成员：</b>",
+        members_text
+    ])
+
+    # 构建按钮
+    buttons = []
+
+    if is_leader:
+        buttons.append([
+            InlineKeyboardButton("📝 编辑公告", callback_data=f"guild_edit_announce_{guild.id}"),
+            InlineKeyboardButton("👥 审批申请", callback_data=f"guild_apps_{guild.id}")
+        ])
+        buttons.append([
+            InlineKeyboardButton("💰 捐赠金库", callback_data=f"guild_donate_{guild.id}"),
+            InlineKeyboardButton("🚪 解散公会", callback_data=f"guild_disband_{guild.id}")
+        ])
+    else:
+        buttons.append([
+            InlineKeyboardButton("💰 捐赠金库", callback_data=f"guild_donate_{guild.id}"),
+            InlineKeyboardButton("🚪 退出公会", callback_data=f"guild_leave_{guild.id}")
+        ])
+
+    buttons.append([
+        InlineKeyboardButton("🏆 公会排行", callback_data="guild_rank"),
+        InlineKeyboardButton("🔙 返回", callback_data="guild_back")
+    ])
+
+    return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
 
 def get_guild_level_info(level: int) -> dict:
     """获取公会等级信息"""
@@ -122,7 +259,7 @@ def get_guild_benefit(guild: Guild) -> dict:
 # ==========================================
 
 async def guild_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """公会主界面"""
+    """公会主界面（命令入口，发送新消息）"""
     msg = update.effective_message
     if not msg:
         return
@@ -132,18 +269,49 @@ async def guild_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with get_session() as session:
         user = session.query(UserBinding).filter_by(tg_id=user_id).first()
         if not user or not user.emby_account:
-            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n\n使用 <code>/bind �账号</code> 绑定后再加入公会。")
+            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n\n使用 <code>/bind 账号</code> 绑定后再加入公会。")
             return
 
         # 检查用户是否已加入公会
         if user.guild_id:
             guild = session.query(Guild).filter_by(id=user.guild_id).first()
             if guild:
-                await show_guild_info(msg, guild, user, session)
+                text, markup = await get_guild_info_panel(guild, user, session, update.effective_user.first_name)
+                await msg.reply_html(text, reply_markup=markup)
                 return
 
         # 未加入公会，显示公会列表
-        await show_guild_list(msg, user, session)
+        text, markup = await get_guild_list_panel(user, session, update.effective_user.first_name)
+        await msg.reply_html(text, reply_markup=markup)
+
+
+async def guild_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """公会主界面（菜单入口，编辑消息）"""
+    query = update.callback_query
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user or not user.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        # 检查用户是否已加入公会
+        if user.guild_id:
+            guild = session.query(Guild).filter_by(id=user.guild_id).first()
+            if guild:
+                text, markup = await get_guild_info_panel(guild, user, session, query.from_user.first_name)
+                await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
+                return
+
+        # 未加入公会，显示公会列表
+        text, markup = await get_guild_list_panel(user, session, query.from_user.first_name)
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
 
 
 async def show_guild_info(msg, guild: Guild, user: UserBinding, session):
@@ -282,6 +450,152 @@ async def show_guild_list(msg, user: UserBinding, session):
 
 
 # ==========================================
+# 申请加入公会
+# ==========================================
+
+async def guild_apply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """申请加入公会"""
+    query = update.callback_query
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    # 解析公会ID
+    pattern = query.data
+    guild_id = int(pattern.split("_")[-1])
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        # 检查是否已加入公会
+        if user.guild_id:
+            await query.edit_message_text("⚠️ <b>您已加入公会喵！</b>\n\n请先退出当前公会再加入其他公会。", parse_mode='HTML')
+            return
+
+        guild = session.query(Guild).filter_by(id=guild_id).first()
+        if not guild:
+            await query.edit_message_text("⚠️ <b>公会不存在喵！</b>", parse_mode='HTML')
+            return
+
+        # 检查是否已满
+        if (guild.member_count or 0) >= (guild.max_members or 20):
+            await query.edit_message_text("⚠️ <b>公会已满员喵！</b>", parse_mode='HTML')
+            return
+
+        # 加入公会
+        add_guild_member(guild, user_id)
+        user.guild_id = guild.id
+        user.guild_join_date = datetime.now()
+        user.guild_contribution = 0
+
+        # 重新计算公会战力
+        guild.total_power = calculate_guild_power(guild)
+
+        session.commit()
+
+        # 获取公会信息面板
+        text, markup = await get_guild_info_panel(guild, user, session, query.from_user.first_name)
+
+        # 显示成功消息并切换到公会信息页面
+        await query.edit_message_text(
+            f"🎉 <b>欢 迎 加 入 ！</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"您已成功加入 <b>{guild.name}</b>！\n"
+            f"<i>\"愿公会之力与您同在！\"</i>",
+            reply_markup=markup,
+            parse_mode='HTML'
+        )
+
+
+async def guild_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """查看公会详情（非成员）"""
+    query = update.callback_query
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    # 解析公会ID
+    pattern = query.data
+    guild_id = int(pattern.split("_")[-1])
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        guild = session.query(Guild).filter_by(id=guild_id).first()
+        if not guild:
+            await query.edit_message_text("⚠️ <b>公会不存在喵！</b>", parse_mode='HTML')
+            return
+
+        level_info = get_guild_level_info(guild.level or 1)
+        benefits = get_guild_benefit(guild)
+        guild_power = calculate_guild_power(guild)
+
+        lines = [
+            "🏰 <b>【 公 会 信 息 】</b>",
+            "━━━━━━━━━━━━━━━━━━",
+            f"🏛️ <b>公会名称：</b> {guild.name}",
+            f"👑 <b>公会会长：</b> {guild.leader_name or '未知'}",
+            f"📊 <b>公会等级：</b> Lv.{guild.level or 1} {level_info['name']}",
+            f"⭐ <b>公会经验：</b> {guild.exp or 0}/{get_guild_next_level_exp(guild.level or 1)}",
+            f"👥 <b>成员数量：</b> {guild.member_count or 0}/{guild.max_members or 20}",
+            f"⚡ <b>公会战力：</b> {guild_power}",
+            "",
+            "🎁 <b>公会福利：</b>",
+        ]
+
+        if benefits["checkin_bonus"] > 0:
+            lines.append(f"   ✨ 签到奖励 +{benefits['checkin_bonus']} MP")
+        if benefits["forge_discount"] < 1.0:
+            lines.append(f"   ⚒️ 锻造 {int(benefits['forge_discount'] * 10)} 折")
+        if benefits["gacha_discount"] < 1.0:
+            lines.append(f"   🎰 抽卡 {int(benefits['gacha_discount'] * 10)} 折")
+        if benefits["daily_gift"]:
+            lines.append(f"   🎁 每日礼包可领取")
+
+        if guild.announcement:
+            lines.extend([
+                "",
+                f"📢 <b>公会公告：</b>",
+                f"   {guild.announcement}"
+            ])
+
+        lines.extend([
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "<i>\"点击下方按钮申请加入！\"</i>"
+        ])
+
+        # 按钮
+        can_join = (guild.member_count or 0) < (guild.max_members or 20)
+        buttons = []
+
+        if can_join:
+            buttons.append([InlineKeyboardButton("📮 申请加入", callback_data=f"guild_apply_{guild.id}")])
+        else:
+            buttons.append([InlineKeyboardButton("🚫 已满员", callback_data="guild_list")])
+
+        buttons.append([InlineKeyboardButton("🔙 返回列表", callback_data="guild_back")])
+
+        await query.edit_message_text(
+            "\n".join(lines),
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode='HTML'
+        )
+
+
+# ==========================================
 # 创建公会
 # ==========================================
 
@@ -332,7 +646,9 @@ async def guild_create_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text(text, parse_mode='HTML')
 
         # 标记用户正在创建公会
-        context.bot_data[f"creating_guild_{user_id}"] = True
+        creating_key = f"creating_guild_{user_id}"
+        context.bot_data[creating_key] = True
+        logger.info(f"[guild] 设置创建状态: {creating_key} = True")
 
 
 async def guild_create_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -344,8 +660,19 @@ async def guild_create_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     guild_name = msg.text.strip()
 
+    logger.info(f"[guild] 收到文本消息: user_id={user_id}, text={guild_name}")
+
+    # 确保 bot_data 存在
+    if not context.bot_data:
+        logger.warning(f"[guild] bot_data 为空!")
+        return
+
     # 检查是否在创建流程中
-    if not context.bot_data.get(f"creating_guild_{user_id}"):
+    creating_key = f"creating_guild_{user_id}"
+    is_creating = context.bot_data.get(creating_key)
+    logger.info(f"[guild] 创建状态: {creating_key} = {is_creating}")
+
+    if not is_creating:
         return
 
     # 取消命令
@@ -385,11 +712,15 @@ async def guild_create_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del context.bot_data[f"creating_guild_{user_id}"]
             return
 
+        # 获取 Telegram 用户名称
+        tg_user = update.effective_user
+        leader_name = tg_user.first_name or tg_user.username or "神秘人"
+
         # 创建公会
         guild = Guild(
             name=guild_name,
             leader_id=user_id,
-            leader_name=user.first_name or "神秘人",
+            leader_name=leader_name,
             members=str(user_id),
             member_count=1,
             max_members=20,
@@ -410,7 +741,7 @@ async def guild_create_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎉 <b>公 会 创 建 成 功 ！</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"🏛️ <b>公会名称：</b> {guild_name}\n"
-            f"👑 <b>公会会长：</b> {user.first_name or '神秘人'}\n"
+            f"👑 <b>公会会长：</b> {leader_name}\n"
             f"⚡ <b>初始战力：</b> {user.attack or 0}\n"
             f"💰 <b>剩余魔力：</b> {user.points} MP\n"
             f"━━━━━━━━━━━━━━━━━━\n"
@@ -549,18 +880,32 @@ async def guild_disband(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==========================================
 
 async def guild_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """返回公会主界面"""
+    """返回公会主界面（编辑消息）"""
     query = update.callback_query
     if not query:
         return
 
     await query.answer()
 
-    fake_update = type('Update', (), {
-        'effective_message': query.message,
-        'effective_user': query.from_user,
-    })()
-    await guild_main(fake_update, context)
+    user_id = query.from_user.id
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user or not user.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        # 检查用户是否已加入公会
+        if user.guild_id:
+            guild = session.query(Guild).filter_by(id=user.guild_id).first()
+            if guild:
+                text, markup = await get_guild_info_panel(guild, user, session, query.from_user.first_name)
+                await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
+                return
+
+        # 未加入公会，显示公会列表
+        text, markup = await get_guild_list_panel(user, session, query.from_user.first_name)
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
 
 
 # ==========================================
@@ -570,10 +915,16 @@ async def guild_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def register(app):
     app.add_handler(CommandHandler("guild", guild_main))
     app.add_handler(CommandHandler("guilds", guild_main))
+    app.add_handler(CallbackQueryHandler(guild_menu, pattern="^guild$"))  # 从菜单进入
 
     # 回调处理
     app.add_handler(CallbackQueryHandler(guild_create_start, pattern="^guild_create$"))
+    app.add_handler(CallbackQueryHandler(guild_apply, pattern=r"^guild_apply_\d+$"))
+    app.add_handler(CallbackQueryHandler(guild_view, pattern=r"^guild_view_\d+$"))
     app.add_handler(CallbackQueryHandler(guild_rank, pattern="^guild_rank$"))
     app.add_handler(CallbackQueryHandler(guild_leave, pattern=r"^guild_leave_\d+$"))
     app.add_handler(CallbackQueryHandler(guild_disband, pattern=r"^guild_disband_\d+$"))
     app.add_handler(CallbackQueryHandler(guild_back, pattern="^guild_back$"))
+
+    # 文本消息处理（用于创建公会名称输入）- 使用更高优先级
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, guild_create_name), group=-1)

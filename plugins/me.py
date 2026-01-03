@@ -630,7 +630,10 @@ async def chest_from_me_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         if not user or not user.is_vip:
             await query.edit_message_text(
-                "💔 <b>需要VIP权限才能开启宝箱喵！</b>"
+                "💔 <b>需要VIP权限才能开启宝箱喵！</b>\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "<i>\"升级VIP享受更多专属权益喵~\"</i>",
+                parse_mode='HTML'
             )
             return
 
@@ -720,12 +723,121 @@ async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def me_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """返回个人档案"""
+    """返回个人档案（从回调）"""
     query = update.callback_query
+    if not query:
+        return
     await query.answer()
-    # 重新调用 me_panel，需要构造一个 update
-    # 由于 me_panel 需要有效的 effective_message，我们直接发送
-    await me_panel(update, context)
+
+    user_id = query.from_user.id
+
+    with get_session() as session:
+        user_data = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+        if not user_data or not user_data.emby_account:
+            await query.edit_message_text(
+                "💔 <b>请先绑定账号喵！</b>\n\n使用 <code>/bind 账号</code> 绑定。",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 返回", callback_data="back_menu")]
+                ]),
+                parse_mode='HTML'
+            )
+            return
+
+        # 数据准备
+        weapon = user_data.weapon if user_data.weapon else "练习木杖"
+        atk = user_data.attack if user_data.attack is not None else 10
+        love = user_data.intimacy if user_data.intimacy is not None else 0
+        win = user_data.win if user_data.win is not None else 0
+        lost = user_data.lost if user_data.lost is not None else 0
+        is_vip = user_data.is_vip
+        emby_account = user_data.emby_account
+        points = user_data.points or 0
+        bank_points = user_data.bank_points or 0
+        resonance_count = user_data.resonance_count if hasattr(user_data, 'resonance_count') else 0
+        last_chest_open = user_data.last_chest_open
+
+    # 获取位阶、评级
+    rank_title, rank_code, rank_text, magic_power = get_rank_title(
+        type('obj', (object,), {
+            'points': points,
+            'bank_points': bank_points,
+            'attack': atk,
+            'intimacy': love,
+        }), is_vip
+    )
+
+    resonance_title = get_resonance_title(resonance_count)
+
+    # VIP 版本
+    if is_vip:
+        total_mp = points + bank_points
+        resonance_cost = 20
+
+        from datetime import timedelta, datetime
+        can_open_chest_today = True
+        if last_chest_open:
+            now = datetime.now()
+            last_open = last_chest_open
+            if last_open.date() >= now.date():
+                can_open_chest_today = False
+
+        chest_status = "🔓" if can_open_chest_today else "🔒"
+
+        text = (
+            f"🌌 <b>【 星 灵 · 终 极 契 约 书 】</b>\n\n"
+            f"🥂 <b>Welcome back, my only Master.</b>\n"
+            f"「星辰在为您加冕，而看板娘为您守望喵~」\n\n"
+            f"💠 <b>:: 灵 魂 识 别 ::</b>\n"
+            f"✨ <b>真名：</b> <code>{emby_account}</code> (VIP)\n"
+            f"👑 <b>位阶：</b> <b>{rank_title}</b>\n"
+            f"🔮 <b>魔导评级：</b> <code>{rank_code}</code> ({rank_text})\n\n"
+            f"⚔️ <b>:: 魔 法 武 装 ::</b>\n"
+            f"🗡️ <b>圣遗物：</b> <b>{weapon}</b>\n"
+            f"🔥 <b>破坏力：</b> <code>{atk}</code> (胜 {win} | 败 {lost})\n\n"
+            f"💎 <b>:: 虚 空 宝 库 ::</b>\n"
+            f"💰 <b>魔力总蓄积：</b> <code>{total_mp:,}</code> MP\n"
+            f"(钱包: {points:,} | 金库: {bank_points:,})\n\n"
+            f"💓 <b>:: 命 运 羁 绊 ::</b>\n"
+            f"💍 <b>契约等级：</b> <code>{love}</code>\n"
+            f"💫 <b>共鸣称号：</b> {resonance_title}\n"
+            f"📊 <b>共鸣次数：</b> {resonance_count} 次\n\n"
+            f"{RESONANCE_PROBABILITY}\n\n"
+        )
+        buttons = [
+            [InlineKeyboardButton(f"💎 VIP宝箱 {chest_status}", callback_data="chest_open_from_me"),
+             InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance")],
+            [InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge"),
+             InlineKeyboardButton("❓ 帮助", callback_data="me_help")]
+        ]
+    else:
+        resonance_cost = 50
+        text = (
+            f"🏰 <b>【 云 海 · 魔 法 少 女 档 案 】</b>\n\n"
+            f"✨ <b>你好呀，{query.from_user.first_name}酱！</b>\n"
+            f"今天的魔法冒险也要加油哦喵~\n\n"
+            f"💠 <b>:: 魔 法 少 女 登 记 ::</b>\n"
+            f"🆔 <b>档案编号：</b> <code>{user_id}</code>\n"
+            f"🌱 <b>当前位阶：</b> {rank_title}\n"
+            f"👤 <b>契约账号：</b> {emby_account}\n\n"
+            f"💠 <b>:: 装 备 与 战 绩 ::</b>\n"
+            f"⚔️ <b>武器：</b> {weapon} (ATK: {atk})\n"
+            f"📊 <b>战绩：</b> {win} 胜 / {lost} 败\n\n"
+            f"💠 <b>:: 魔 法 背 包 ::</b>\n"
+            f"🎒 <b>持有魔力：</b> {points} MP\n"
+            f"💓 <b>好感度：</b> {love}\n"
+            f"💫 <b>共鸣次数：</b> {resonance_count} 次\n\n"
+            f"{RESONANCE_PROBABILITY}\n\n"
+        )
+        buttons = [
+            [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance"),
+             InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip")],
+            [InlineKeyboardButton("❓ 帮助", callback_data="me_help")]
+        ]
+
+    buttons.append([InlineKeyboardButton("🔙 返回", callback_data="back_menu")])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
 
 
 def register(app):

@@ -938,26 +938,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fake_update = make_fake_update(query, effective_message=query.message)
         await cmd_weekly_watch(fake_update, context)
 
-    # === ⚡ 新功能 ===
-
-    # 战力突破
-    elif data == "breakthrough":
-        from plugins.breakthrough import breakthrough_main
-        fake_update = make_fake_update(query)
-        await breakthrough_main(fake_update, context)
-
-    # 公会系统
-    elif data == "guild":
-        from plugins.guild import guild_main
-        fake_update = make_fake_update(query)
-        await guild_main(fake_update, context)
-
-    # 外观商店
-    elif data == "cosmetics":
-        from plugins.cosmetics import cosmetics_main
-        fake_update = make_fake_update(query)
-        await cosmetics_main(fake_update, context)
-
     # 社交菜单
     elif data == "menu_social":
         txt = (
@@ -994,11 +974,6 @@ def register(app):
                  "vip", "upgrade_vip", "apply_vip", "help_manual", "help_faq"]:
         app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
         print(f"  ✅ 注册: {data}", flush=True)
-
-    # 新功能按钮
-    for data in ["breakthrough", "guild", "cosmetics"]:
-        app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
-        print(f"  ✅ 新功能: {data}", flush=True)
 
     # Emby 观影挖矿相关
     for data in ["bind_emby_help", "watch_status", "weekly_watch",

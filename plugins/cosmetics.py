@@ -232,12 +232,61 @@ def get_rarity_color(rarity: str) -> str:
     return colors.get(rarity, "⚪")
 
 
+async def get_cosmetics_main_panel(user: UserBinding, first_name: str) -> tuple:
+    """获取外观主面板（用于编辑消息）"""
+    # 获取当前装备
+    current_frame = user.equipped_frame or "default"
+    current_title = user.equipped_title or "novice"
+    current_theme = user.equipped_theme or "default"
+
+    # 获取拥有的数量
+    owned_frames = len(get_owned_list(user, "frames"))
+    owned_titles = len(get_owned_list(user, "titles"))
+    owned_themes = len(get_owned_list(user, "themes"))
+
+    # 获取当前装备信息
+    frame_info = AVATAR_FRAMES.get(current_frame, AVATAR_FRAMES["default"])
+    title_info = TITLES.get(current_title, TITLES["novice"])
+
+    lines = [
+        "🎨 <b>【 外 观 系 统 】</b>",
+        "━━━━━━━━━━━━━━━━━━",
+        f"👤 <b>魔法师：</b> {first_name or '神秘人'}",
+        "",
+        "📋 <b>当前装备：</b>",
+        f"   🖼️ <b>头像框：</b> {frame_info['emoji']} {frame_info['name']}",
+        f"   🏷️ <b>称号：</b> {title_info['emoji']} {title_info['name']}",
+        f"   🎨 <b>主题：</b> 默认主题",
+        "",
+        "📦 <b>我的收藏：</b>",
+        f"   🖼️ 头像框: {owned_frames} 个",
+        f"   🏷️ 称号: {owned_titles} 个",
+        f"   🎨 主题: {owned_themes} 个",
+        "",
+        f"💰 <b>当前余额：</b> {user.points} MP",
+    ]
+
+    buttons = [
+        [
+            InlineKeyboardButton("🖼️ 头像框商店", callback_data="cos_frame_shop"),
+            InlineKeyboardButton("🏷️ 称号商店", callback_data="cos_title_shop")
+        ],
+        [
+            InlineKeyboardButton("🎒 我的收藏", callback_data="cos_collection"),
+            InlineKeyboardButton("👔 当前装备", callback_data="cos_equipped")
+        ],
+        [InlineKeyboardButton("🔙 返回", callback_data="cos_back")]
+    ]
+
+    return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
 # ==========================================
 # 主界面
 # ==========================================
 
 async def cosmetics_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """外观系统主界面"""
+    """外观系统主界面（命令入口，发送新消息）"""
     msg = update.effective_message
     if not msg:
         return
@@ -250,54 +299,28 @@ async def cosmetics_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n\n使用 <code>/bind 账号</code> 绑定后再来。")
             return
 
-        # 获取当前装备
-        current_frame = user.equipped_frame or "default"
-        current_title = user.equipped_title or "novice"
-        current_theme = user.equipped_theme or "default"
+        text, markup = await get_cosmetics_main_panel(user, update.effective_user.first_name)
+        await msg.reply_html(text, reply_markup=markup)
 
-        # 获取拥有的数量
-        owned_frames = len(get_owned_list(user, "frames"))
-        owned_titles = len(get_owned_list(user, "titles"))
-        owned_themes = len(get_owned_list(user, "themes"))
 
-        # 获取当前装备信息
-        frame_info = AVATAR_FRAMES.get(current_frame, AVATAR_FRAMES["default"])
-        title_info = TITLES.get(current_title, TITLES["novice"])
+async def cosmetics_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """外观系统主界面（菜单入口，编辑消息）"""
+    query = update.callback_query
+    if not query:
+        return
 
-        lines = [
-            "🎨 <b>【 外 观 系 统 】</b>",
-            "━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>魔法师：</b> {update.effective_user.first_name or '神秘人'}",
-            "",
-            "📋 <b>当前装备：</b>",
-            f"   🖼️ <b>头像框：</b> {frame_info['emoji']} {frame_info['name']}",
-            f"   🏷️ <b>称号：</b> {title_info['emoji']} {title_info['name']}",
-            f"   🎨 <b>主题：</b> 默认主题",
-            "",
-            "📦 <b>我的收藏：</b>",
-            f"   🖼️ 头像框: {owned_frames} 个",
-            f"   🏷️ 称号: {owned_titles} 个",
-            f"   🎨 主题: {owned_themes} 个",
-            "",
-            "💰 <b>当前余额：</b> {user.points} MP",
-        ]
+    await query.answer()
 
-        buttons = [
-            [
-                InlineKeyboardButton("🖼️ 头像框商店", callback_data="cos_frame_shop"),
-                InlineKeyboardButton("🏷️ 称号商店", callback_data="cos_title_shop")
-            ],
-            [
-                InlineKeyboardButton("🎒 我的收藏", callback_data="cos_collection"),
-                InlineKeyboardButton("👔 当前装备", callback_data="cos_equipped")
-            ],
-            [InlineKeyboardButton("🔙 返回", callback_data="cos_back")]
-        ]
+    user_id = query.from_user.id
 
-        await msg.reply_html(
-            "\n".join(lines),
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user or not user.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        text, markup = await get_cosmetics_main_panel(user, query.from_user.first_name)
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
 
 
 # ==========================================
@@ -567,18 +590,23 @@ async def equip_cosmetic(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==========================================
 
 async def cos_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """返回主界面"""
+    """返回主界面（编辑消息）"""
     query = update.callback_query
     if not query:
         return
 
     await query.answer()
 
-    fake_update = type('Update', (), {
-        'effective_message': query.message,
-        'effective_user': query.from_user,
-    })()
-    await cosmetics_main(fake_update, context)
+    user_id = query.from_user.id
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user or not user.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        text, markup = await get_cosmetics_main_panel(user, query.from_user.first_name)
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
 
 
 # ==========================================
@@ -588,6 +616,7 @@ async def cos_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def register(app):
     app.add_handler(CommandHandler("cosmetics", cosmetics_main))
     app.add_handler(CommandHandler("shop", cosmetics_main))
+    app.add_handler(CallbackQueryHandler(cosmetics_menu, pattern="^cosmetics$"))  # 从菜单进入
 
     # 回调处理
     app.add_handler(CallbackQueryHandler(cos_back, pattern="^cos_back$"))

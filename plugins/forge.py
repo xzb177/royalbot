@@ -501,7 +501,7 @@ async def my_weapon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🗡️ <b>当前武器：</b> <b>{weapon}</b>\n"
         f"💪 <b>战力评估：</b> <b>{attack}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>\"使用 /forge 可以锻造新武器哦喵~(｡•̀ᴗ-)✧\"</i>"
+        f"<i>\"使用 /forge 可以锻造新武器喵~\"</i>"
     )
 
     await reply_with_auto_delete(msg, txt)
@@ -529,7 +529,7 @@ async def weapon_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw_collection = u.weapon_collection if u.weapon_collection else ""
 
         if not raw_collection.strip():
-            collection_display = "🍃 <i>还没有收藏任何武器...\n去锻造一些精品武器吧喵~(｡･ω･｡)</i>"
+            collection_display = "🍃 <i>\"还没有收藏任何武器...\\n去锻造一些精品武器吧喵~\"</i>"
         else:
             # 解析收藏列表
             weapons = raw_collection.split(",") if raw_collection else []

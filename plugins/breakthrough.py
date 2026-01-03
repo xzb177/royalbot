@@ -166,8 +166,94 @@ def get_next_level_info(level: int) -> dict:
 # 突破命令
 # ==========================================
 
+async def get_breakthrough_panel_text(user: UserBinding, first_name: str) -> tuple:
+    """获取突破面板文本和按钮（用于编辑消息）"""
+    level = user.breakthrough_level or 0
+    exp = user.breakthrough_exp or 0
+    total_spent = user.total_mp_spent_breakthrough or 0
+    is_vip = user.is_vip or False
+    points = user.points or 0
+
+    # 计算总战力加成
+    power_bonus = get_total_power_bonus(user)
+    current_attack = user.attack or 0
+
+    # 获取下一级信息
+    next_level = get_next_level_info(level)
+    success_rate = get_breakthrough_success_rate(level, is_vip) * 100
+    next_cost = get_breakthrough_cost(level, is_vip) if next_level else 0
+
+    # 构建显示文本
+    lines = [
+        "⚔️ <b>【 战 力 突 破 系 统 】</b>",
+        "━━━━━━━━━━━━━━━━━━",
+        f"👤 <b>魔法师：</b> {first_name or '神秘人'}",
+        f"🏆 <b>当前突破：</b> {level}/10 {BREAKTHROUGH_LEVELS.get(level, {}).get('emoji', '⚪')}",
+    ]
+
+    if level > 0:
+        current_info = BREAKTHROUGH_LEVELS.get(level, {})
+        lines.extend([
+            f"📜 <b>当前境界：</b> {current_info.get('emoji', '')} <b>{current_info.get('name', '未知')}</b>",
+            f"🎖️ <b>获得称号：</b> {current_info.get('title', '无')}",
+        ])
+
+    lines.extend([
+        "",
+        f"⚡ <b>突破战力：</b> +{power_bonus}",
+        f"🗡️ <b>总战力：</b> {current_attack + power_bonus} (基础{current_attack} + 突破{power_bonus})",
+        "",
+        f"💰 <b>当前余额：</b> {points} MP",
+        f"💸 <b>累计消耗：</b> {total_spent} MP",
+    ])
+
+    if next_level:
+        lines.extend([
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            f"🎯 <b>下一突破：</b> {next_level['emoji']} <b>{next_level['name']}</b>",
+            f"📖 <b>境界描述：</b> {next_level['desc']}",
+            f"🎖️ <b>获得称号：</b> {next_level['title']}",
+            f"⚡ <b>战力加成：</b> +{next_level['power_bonus']}",
+            f"💰 <b>突破消耗：</b> {next_cost} MP {'👑VIP专享7折' if is_vip else ''}",
+            f"🎲 <b>成功概率：</b> <code>{success_rate:.1f}%</code>",
+        ])
+    else:
+        lines.extend([
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "🌈 <b>已达最高境界！</b>",
+            "您是传说中的虚空主宰！"
+        ])
+
+    lines.extend([
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "<i>\"突破自我，超越极限！\"</i>"
+    ])
+
+    # 构建按钮
+    buttons = []
+    if next_level:
+        if points >= next_cost:
+            buttons.append([
+                InlineKeyboardButton(f"⚔️ 开始突破 ({next_cost} MP)", callback_data="bt_start")
+            ])
+        else:
+            buttons.append([
+                InlineKeyboardButton(f"💸 魔力不足 (需 {next_cost} MP)", callback_data="bt_no_funds")
+            ])
+
+    buttons.append([
+        InlineKeyboardButton("📊 突破说明", callback_data="bt_help"),
+        InlineKeyboardButton("🔙 返回", callback_data="bt_back")
+    ])
+
+    return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
 async def breakthrough_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """战力突破主界面"""
+    """战力突破主界面（命令入口，发送新消息）"""
     msg = update.effective_message
     if not msg:
         return
@@ -180,91 +266,28 @@ async def breakthrough_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n\n使用 <code>/bind 账号</code> 绑定后再来突破。")
             return
 
-        level = user.breakthrough_level or 0
-        exp = user.breakthrough_exp or 0
-        total_spent = user.total_mp_spent_breakthrough or 0
-        is_vip = user.is_vip or False
-        points = user.points or 0
+        text, markup = await get_breakthrough_panel_text(user, update.effective_user.first_name)
+        await msg.reply_html(text, reply_markup=markup)
 
-        # 计算总战力加成
-        power_bonus = get_total_power_bonus(user)
-        current_attack = user.attack or 0
 
-        # 获取下一级信息
-        next_level = get_next_level_info(level)
-        success_rate = get_breakthrough_success_rate(level, is_vip) * 100
-        next_cost = get_breakthrough_cost(level, is_vip) if next_level else 0
+async def breakthrough_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """战力突破主界面（菜单入口，编辑消息）"""
+    query = update.callback_query
+    if not query:
+        return
 
-        # 构建显示文本
-        lines = [
-            "⚔️ <b>【 战 力 突 破 系 统 】</b>",
-            "━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>魔法师：</b> {update.effective_user.first_name or '神秘人'}",
-            f"🏆 <b>当前突破：</b> {level}/10 {BREAKTHROUGH_LEVELS.get(level, {}).get('emoji', '⚪')}",
-        ]
+    await query.answer()
 
-        if level > 0:
-            current_info = BREAKTHROUGH_LEVELS.get(level, {})
-            lines.extend([
-                f"📜 <b>当前境界：</b> {current_info.get('emoji', '')} <b>{current_info.get('name', '未知')}</b>",
-                f"🎖️ <b>获得称号：</b> {current_info.get('title', '无')}",
-            ])
+    user_id = query.from_user.id
 
-        lines.extend([
-            f"",
-            f"⚡ <b>突破战力：</b> +{power_bonus}",
-            f"🗡️ <b>总战力：</b> {current_attack + power_bonus} (基础{current_attack} + 突破{power_bonus})",
-            f"",
-            f"💰 <b>当前余额：</b> {points} MP",
-            f"💸 <b>累计消耗：</b> {total_spent} MP",
-        ])
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user or not user.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>\n\n使用 <code>/bind 账号</code> 绑定后再来突破。", parse_mode='HTML')
+            return
 
-        if next_level:
-            lines.extend([
-                "",
-                "━━━━━━━━━━━━━━━━━━",
-                f"🎯 <b>下一突破：</b> {next_level['emoji']} <b>{next_level['name']}</b>",
-                f"📖 <b>境界描述：</b> {next_level['desc']}",
-                f"🎖️ <b>获得称号：</b> {next_level['title']}",
-                f"⚡ <b>战力加成：</b> +{next_level['power_bonus']}",
-                f"💰 <b>突破消耗：</b> {next_cost} MP {'👑VIP专享7折' if is_vip else ''}",
-                f"🎲 <b>成功概率：</b> <code>{success_rate:.1f}%</code>",
-            ])
-        else:
-            lines.extend([
-                "",
-                "━━━━━━━━━━━━━━━━━━",
-                "🌈 <b>已达最高境界！</b>",
-                "您是传说中的虚空主宰！"
-            ])
-
-        lines.extend([
-            "",
-            "━━━━━━━━━━━━━━━━━━",
-            "<i>\"突破自我，超越极限！\"</i>"
-        ])
-
-        # 构建按钮
-        buttons = []
-        if next_level:
-            if points >= next_cost:
-                buttons.append([
-                    InlineKeyboardButton(f"⚔️ 开始突破 ({next_cost} MP)", callback_data="bt_start")
-                ])
-            else:
-                buttons.append([
-                    InlineKeyboardButton(f"💸 魔力不足 (需 {next_cost} MP)", callback_data="bt_no_funds")
-                ])
-
-        buttons.append([
-            InlineKeyboardButton("📊 突破说明", callback_data="bt_help"),
-            InlineKeyboardButton("🔙 返回", callback_data="bt_back")
-        ])
-
-        await msg.reply_html(
-            "\n".join(lines),
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        text, markup = await get_breakthrough_panel_text(user, query.from_user.first_name)
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
 
 
 async def breakthrough_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -302,6 +325,9 @@ async def breakthrough_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"💸 <b>魔力不足喵！</b>\n\n"
                 f"突破需要 <b>{cost}</b> MP\n"
                 f"当前余额：<b>{user.points}</b> MP",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 返回", callback_data="bt_back")]
+                ]),
                 parse_mode='HTML'
             )
             return
@@ -429,19 +455,23 @@ async def breakthrough_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def breakthrough_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """返回突破主界面"""
+    """返回突破主界面（编辑消息）"""
     query = update.callback_query
     if not query:
         return
 
     await query.answer()
 
-    # 创建伪造的 update 调用 breakthrough_main
-    fake_update = type('Update', (), {
-        'effective_message': query.message,
-        'effective_user': query.from_user,
-    })()
-    await breakthrough_main(fake_update, context)
+    user_id = query.from_user.id
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not user or not user.emby_account:
+            await query.edit_message_text("💔 <b>请先绑定账号喵！</b>", parse_mode='HTML')
+            return
+
+        text, markup = await get_breakthrough_panel_text(user, query.from_user.first_name)
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
 
 
 async def breakthrough_no_funds(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -459,6 +489,7 @@ async def breakthrough_no_funds(update: Update, context: ContextTypes.DEFAULT_TY
 
 def register(app):
     app.add_handler(CommandHandler("breakthrough", breakthrough_main))
+    app.add_handler(CallbackQueryHandler(breakthrough_menu, pattern="^breakthrough$"))  # 从菜单进入
     app.add_handler(CallbackQueryHandler(breakthrough_start, pattern="^bt_start$"))
     app.add_handler(CallbackQueryHandler(breakthrough_help, pattern="^bt_help$"))
     app.add_handler(CallbackQueryHandler(breakthrough_back, pattern="^bt_back$"))
