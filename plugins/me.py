@@ -362,8 +362,8 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📊 <b>共鸣次数：</b> {resonance_count} 次\n\n"
             )
             buttons = [
-                [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance")],
-                [InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge")]
+                [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance"),
+                 InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge")]
             ]
         # 普通版
         else:
@@ -385,8 +385,8 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💫 <b>共鸣次数：</b> {resonance_count} 次\n\n"
             )
             buttons = [
-                [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance")],
-                [InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip")]
+                [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance"),
+                 InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip")]
             ]
 
         await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))

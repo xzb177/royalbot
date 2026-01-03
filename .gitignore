@@ -7,6 +7,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.pytest_cache/
+*.pyc
 
 # 虚拟环境
 venv/
