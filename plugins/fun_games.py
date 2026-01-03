@@ -441,8 +441,8 @@ AI_OPPONENTS = {
         "weapon": "练习木杖",
         "min_bet": 10,
         "max_bet": 100,
-        "win_rate": 0.35,  # 玩家65%胜率
-        "reward_multiplier": 0.8,  # 赢了获得80%赌注
+        "win_rate": 0.40,  # 玩家60%胜率
+        "reward_multiplier": 0.5,  # 赢了获得50%赌注
         "desc": "刚刚入门的魔法师，适合新手练手"
     },
     "mage": {
@@ -452,9 +452,9 @@ AI_OPPONENTS = {
         "weapon": "火焰法杖",
         "min_bet": 50,
         "max_bet": 300,
-        "win_rate": 0.45,  # 玩家55%胜率
-        "reward_multiplier": 1.0,
-        "desc": "经验丰富的战斗法师，不容小觑"
+        "win_rate": 0.50,  # 50/50
+        "reward_multiplier": 0.9,  # 赢了获得90%赌注
+        "desc": "经验丰富的战斗法师，势均力敌"
     },
     "archmage": {
         "name": "大魔导师",
@@ -463,8 +463,8 @@ AI_OPPONENTS = {
         "weapon": "星辰法杖",
         "min_bet": 200,
         "max_bet": 800,
-        "win_rate": 0.55,  # 玩家45%胜率
-        "reward_multiplier": 1.5,  # 赢了获得150%赌注
+        "win_rate": 0.58,  # 玩家42%胜率
+        "reward_multiplier": 1.2,  # 赢了获得120%赌注
         "desc": "传说中的魔法大师，挑战需要勇气"
     },
     "dragon": {
@@ -474,9 +474,9 @@ AI_OPPONENTS = {
         "weapon": "龙之利爪",
         "min_bet": 500,
         "max_bet": 2000,
-        "win_rate": 0.65,  # 玩家35%胜率
-        "reward_multiplier": 2.5,  # 赢了获得250%赌注
-        "desc": "传说中的魔龙，胜利者将获得丰厚报酬"
+        "win_rate": 0.70,  # 玩家30%胜率
+        "reward_multiplier": 1.8,  # 赢了获得180%赌注
+        "desc": "传说中的魔龙，高风险高回报"
     },
     "goddess": {
         "name": "魔法女神",
@@ -485,9 +485,9 @@ AI_OPPONENTS = {
         "weapon": "创世法典",
         "min_bet": 1000,
         "max_bet": 5000,
-        "win_rate": 0.80,  # 玩家20%胜率
-        "reward_multiplier": 5.0,  # 赢了获得500%赌注
-        "desc": "魔法界的终极存在，敢来挑战吗？"
+        "win_rate": 0.85,  # 玩家15%胜率
+        "reward_multiplier": 3.0,  # 赢了获得300%赌注
+        "desc": "魔法界的终极存在，极难战胜"
     }
 }
 
@@ -1238,8 +1238,9 @@ async def process_duel_battle(query, context: ContextTypes.DEFAULT_TYPE, duel_da
             loser.win_streak = 0
             loser.lose_streak = (loser.lose_streak or 0) + 1
 
-            # 资金转移
-            winner.points += bet
+            # 资金转移（扣除5%场地费）
+            arena_fee = max(1, bet // 20)  # 5% 场地费，最低1 MP
+            winner.points += bet - arena_fee
             winner.win += 1
             winner.lose_streak = 0  # 重置连败
 
@@ -1334,6 +1335,7 @@ async def process_duel_battle(query, context: ContextTypes.DEFAULT_TYPE, duel_da
             await track_activity_wrapper(lose_id, "duel")
 
             # 保存需要在session关闭后使用的值
+            arena_fee_value = arena_fee  # 保存场地费用于显示
             power_up_text_value = f"\n⬆️ <b>{win_name}</b> 战力 +{power_up}！战斗经验提升了喵！" if power_up else ""
 
             # 败者安慰奖文本
@@ -1387,7 +1389,7 @@ async def process_duel_battle(query, context: ContextTypes.DEFAULT_TYPE, duel_da
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             f"🏆 <b>胜者：</b> {win_name}",
             f"🔥 <b>连胜：</b> {winner_streak} 场！",
-            f"💰 <b>收益：</b> +{bet} MP{power_up_text_value}",
+            f"💰 <b>收益：</b> +{bet - arena_fee_value} MP (赌注{bet} - 场地费{arena_fee_value}){power_up_text_value}",
         ]
 
         # 添加暴击效果
