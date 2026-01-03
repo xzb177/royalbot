@@ -26,13 +26,39 @@ DAILY_TASKS = {
     "duel": {"name": "勇者试炼", "desc": "参与一次决斗", "reward": 30, "emoji": "⚔️", "target": 1},
     "gift": {"name": "传递爱心", "desc": "向他人转赠魔力", "reward": 30, "emoji": "💝", "target": 1},
     "shop_buy": {"name": "购物达人", "desc": "在商店购买任意商品", "reward": 25, "emoji": "🛒", "target": 1},
+    "wheel": {"name": "幸运转盘", "desc": "使用一次幸运转盘", "reward": 20, "emoji": "🎡", "target": 1},
+    "tower": {"name": "通天塔", "desc": "挑战一次通天塔", "reward": 30, "emoji": "🗼", "target": 1},
+    "resonance": {"name": "灵魂共鸣", "desc": "进行一次灵魂共鸣", "reward": 25, "emoji": "💫", "target": 1},
+    "bank": {"name": "银行存取", "desc": "使用银行存取款一次", "reward": 15, "emoji": "🏦", "target": 1},
 }
 
 # 任务池 - 每天从中随机选3个
+# 按成本分层，确保每天都有免费任务可做
+# 移除高消费任务（forge, shop_buy），让新手也能完成
 TASK_POOL = [
-    ["chat_10", "chat_20"],  # 聊天类 (必选一个)
-    ["checkin", "lucky_used", "tarot", "forge", "poster", "duel", "gift", "shop_buy"],  # 互动类
+    ["chat_10", "chat_20"],  # 聊天类 (必选一个) - 免费
+    [
+        # 免费任务
+        "checkin",    # 签到 - 免费（还赚钱）
+        "wheel",      # 转盘 - 免费
+        "resonance",  # 共鸣 - 免费
+        "bank",       # 银行 - 免费
+        # 低消费任务 (<25 MP)
+        "poster",     # 盲盒 - 20MP（新手有3张券）
+        "tarot",      # 塔罗 - 15MP买券
+        # 有风险但免费/低成本
+        "duel",       # 决斗 - 有风险但免费参与
+        "tower",      # 通天塔 - 免费挑战
+        "gift",       # 转赠 - 低成本
+    ],
 ]
+
+# 分层任务配置（用于确保任务平衡）
+TASK_TIERS = {
+    "free": ["checkin", "wheel", "resonance", "bank", "duel", "tower"],  # 完全免费
+    "low_cost": ["poster", "tarot", "gift"],  # <50 MP
+    "high_cost": ["forge", "shop_buy"],  # 高消费任务 - 已从每日任务池移除
+}
 
 # ==========================================
 # 📜 悬赏任务配置
@@ -94,6 +120,22 @@ BOUNTY_TYPES = {
         "target_range": (1, 1),
         "reward_range": (30, 80),
     },
+    "tower": {
+        "name": "通天塔挑战",
+        "emoji": "🗼",
+        "title": "屠龙者",
+        "desc_template": "在通天塔击败 <b>{target}</b> 只怪物！",
+        "target_range": (3, 8),
+        "reward_range": (60, 150),
+    },
+    "wheel": {
+        "name": "转盘挑战",
+        "emoji": "🎡",
+        "title": "幸运之星",
+        "desc_template": "使用幸运转盘 <b>{target}</b> 次！",
+        "target_range": (3, 10),
+        "reward_range": (40, 100),
+    },
 }
 
 # 悬赏令缓存 {chat_id: {...}}
@@ -111,6 +153,7 @@ def get_user_daily_tasks(user: UserBinding) -> dict:
     """获取用户今日任务，如果没有则生成"""
     today = get_today()
 
+    # 先检查是否需要刷新（生成新任务）
     need_refresh = False
     if user.task_date:
         last_date = user.task_date.date() if isinstance(user.task_date, datetime) else user.task_date
@@ -121,16 +164,26 @@ def get_user_daily_tasks(user: UserBinding) -> dict:
 
     if need_refresh:
         selected_tasks = []
+        # 1. 聊天任务（必选）
         selected_tasks.append(random.choice(TASK_POOL[0]))
-        interactive = [t for t in TASK_POOL[1] if t not in selected_tasks]
-        selected_tasks.extend(random.sample(interactive, min(2, len(interactive))))
+
+        # 2. 确保至少1个免费任务
+        free_tasks = [t for t in TASK_POOL[1] if t in TASK_TIERS["free"]]
+        selected_tasks.append(random.choice(free_tasks))
+
+        # 3. 第三个任务随机（可以是任何任务）
+        remaining = [t for t in TASK_POOL[1] if t not in selected_tasks]
+        selected_tasks.append(random.choice(remaining))
 
         user.task_date = datetime.now()
         user.daily_tasks = ",".join(selected_tasks)
         user.task_progress = "0,0,0"
 
+    # 确保读取最新的 task_progress
     task_ids = (user.daily_tasks or "").split(",")
-    progress_list = ((user.task_progress or "0,0,0").split(","))
+    # 如果 user.task_progress 是空的，初始化为 "0,0,0"
+    progress_str = user.task_progress or "0,0,0"
+    progress_list = progress_str.split(",")
 
     tasks = {}
     for i, tid in enumerate(task_ids):
@@ -575,13 +628,20 @@ async def on_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 检查每日任务进度
         new_completed, task_name, base_reward = update_task_progress(u, "chat", 1)
 
+        # 始终提交 session 以保存 task_progress
+        session.commit()
+
         if new_completed:
             reward = base_reward
             if u.is_vip:
                 reward = int(reward * 1.5)
 
-            u.points += reward
-            session.commit()
+            # 任务完成后额外奖励魔力
+            with get_session() as reward_session:
+                reward_user = reward_session.query(UserBinding).filter_by(tg_id=user.id).first()
+                if reward_user:
+                    reward_user.points += reward
+                    reward_session.commit()
 
             msg = (
                 f"🎉 <b>【 每 日 任 务 · 完 成 ！】</b>\n"
@@ -636,6 +696,22 @@ async def track_and_check_task(user_id: int, task_type: str) -> tuple:
             return True, msg
 
         return False, None
+
+
+async def get_task_status(user_id: int) -> dict:
+    """
+    获取用户当前任务状态（实时）
+    返回任务字典，包含最新进度
+    """
+    with get_session() as session:
+        u = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if not u:
+            return {}
+
+        # 强制刷新以确保获取最新数据
+        session.refresh(u)
+
+        return get_user_daily_tasks(u)
 
 
 # ==========================================

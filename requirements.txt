@@ -1,5 +1,7 @@
-python-telegram-bot==20.7
+python-telegram-bot[job-queue]==20.7
 sqlalchemy
 aiosqlite
 aiohttp
 requests
+psycopg2-binary
+APScheduler>=3.10.4

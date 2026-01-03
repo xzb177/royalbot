@@ -9,11 +9,11 @@
 """
 from contextlib import contextmanager
 from typing import Optional, List
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text, inspect
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool, QueuePool
 from config import Config
-from database.models import Base, UserBinding, VIPApplication
+from database.models import Base, UserBinding, VIPApplication, RedPacket
 
 
 # === 数据库连接管理（性能优化） ===
@@ -37,12 +37,14 @@ if Config.DB_TYPE == "sqlite":
         cursor = dbapi_conn.cursor()
         # WAL 模式 - 允许读写并发
         cursor.execute("PRAGMA journal_mode=WAL")
-        # 同步模式 - NORMAL 平衡性能和安全
-        cursor.execute("PRAGMA synchronous=NORMAL")
+        # 同步模式 - FULL 确保数据持久化（Docker环境需要）
+        cursor.execute("PRAGMA synchronous=FULL")
         # 缓存大小 - 增加到 64MB
         cursor.execute("PRAGMA cache_size=-64000")
         # 临时存储在内存中
         cursor.execute("PRAGMA temp_store=MEMORY")
+        # 每次 commit 后立即写入磁盘
+        cursor.execute("PRAGMA wal_autocheckpoint=100")
         cursor.close()
 
 else:
@@ -57,6 +59,42 @@ else:
         pool_recycle=3600,      # 连接回收时间（1小时）
         pool_pre_ping=True,     # 连接健康检查
     )
+
+# === 数据库迁移系统 ===
+def run_migrations():
+    """运行数据库迁移，自动添加缺失的字段"""
+    with engine.connect() as conn:
+        inspector = inspect(engine)
+
+        # 检查 bindings 表
+        if 'bindings' in inspector.get_table_names():
+            columns = [c['name'] for c in inspector.get_columns('bindings')]
+
+            # 需要添加的字段
+            migrations = [
+                ('last_chest_open', 'DATETIME'),
+            ]
+
+            for col_name, col_type in migrations:
+                if col_name not in columns:
+                    try:
+                        conn.execute(text(f"ALTER TABLE bindings ADD COLUMN {col_name} {col_type}"))
+                        conn.commit()
+                        print(f"[Migration] 添加字段: bindings.{col_name}")
+                    except Exception:
+                        pass
+
+        # 检查 red_packets 表是否存在
+        if 'red_packets' not in inspector.get_table_names():
+            try:
+                RedPacket.__table__.create(engine, checkfirst=True)
+                print(f"[Migration] 创建表: red_packets")
+            except Exception:
+                pass
+
+
+# 运行迁移
+run_migrations()
 
 # 创建所有表
 Base.metadata.create_all(engine)
@@ -82,6 +120,16 @@ def get_session():
     try:
         yield session
         session.commit()
+        # SQLite WAL 模式下，执行 checkpoint 确保数据持久化
+        if Config.DB_TYPE == "sqlite":
+            import sqlite3
+            try:
+                # 直接连接数据库执行 checkpoint
+                conn = sqlite3.connect(Config.DB_PATH, timeout=30)
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.close()
+            except Exception:
+                pass
     except Exception:
         session.rollback()
         raise

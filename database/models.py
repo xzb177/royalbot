@@ -102,6 +102,57 @@ class UserBinding(Base):
     last_active_time = Column(DateTime)              # 上次活跃时间
     presence_levels_claimed = Column(Text, default="")  # 已领取的活跃等级
 
+    # === 通天塔系统 ===
+    tower_current_floor = Column(Integer, default=0)   # 当前挑战层数
+    tower_max_floor = Column(Integer, default=0)       # 历史最高层数
+    tower_total_wins = Column(Integer, default=0)      # 通天塔总胜场
+
+    # === VIP专属宝箱系统 ===
+    last_chest_open = Column(DateTime)                 # 上次开启VIP宝箱时间
+
+    # === Emby观影系统 ===
+    daily_watch_minutes = Column(Integer, default=0)   # 今日已计算奖励的观影分钟数
+    total_watch_minutes = Column(Integer, default=0)  # 累计观影总分钟数
+    last_watch_claimed = Column(DateTime)              # 上次领取观影奖励时间
+    early_bird_wins = Column(Integer, default=0)        # 首播奖励获得次数
+    claimed_early_bird_items = Column(Text, default="")  # 已领取首播奖励的媒体ID列表
+
+    # === 每周观影挑战 ===
+    weekly_challenge_target = Column(Integer, default=0)     # 本周目标(分钟)
+    weekly_challenge_progress = Column(Integer, default=0)   # 本周进度(分钟)
+    weekly_challenge_reward_claimed = Column(Boolean, default=False)  # 本周奖励是否已领取
+    weekly_challenge_completed = Column(Integer, default=0)  # 累计完成周挑战次数
+
+    # === 观影成就 ===
+    watch_achievements = Column(Text, default="")  # 已完成观影成就列表
+
+    # === 新手系统 ===
+    newbie_package_claimed = Column(Boolean, default=False)  # 是否已领取新手礼包
+
+    # === 保底系统 ===
+    forge_pity_counter = Column(Integer, default=0)  # 锻造保底计数（连续低品质次数）
+
+    # === 新手加成系统 ===
+    registered_date = Column(DateTime)  # 注册日期（用于计算新手期）
+
+
+class RedPacket(Base):
+    """红包模型"""
+    __tablename__ = 'red_packets'
+
+    id = Column(String, primary_key=True)             # 红包ID (UUID)
+    sender_id = Column(BigInteger)                    # 发送者ID
+    chat_id = Column(BigInteger)                      # 群组ID
+    message_id = Column(Integer)                       # 消息ID
+    total_amount = Column(Integer)                     # 总金额(MP)
+    total_count = Column(Integer)                      # 红包总个数
+    remaining_amount = Column(Integer)                 # 剩余金额(MP)
+    remaining_count = Column(Integer)                  # 剩余个数
+    packet_type = Column(String, default='random')    # 红包类型: random(随机)/average(平均)
+    greeting = Column(String, default='恭喜发财，大吉大利')  # 祝福语
+    created_at = Column(DateTime, default=datetime.now)
+    claimed_by = Column(Text, default="")              # 已抢用户 JSON 格式: {user_id: amount}
+
 
 class VIPApplication(Base):
     """VIP 申请模型"""
