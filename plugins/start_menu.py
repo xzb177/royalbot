@@ -252,7 +252,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # VIP中心
     elif data == "vip":
         user = query.from_user
-        from database import get_session, UserBinding
         with get_session() as session:
             u = session.query(UserBinding).filter_by(tg_id=user.id).first()
             is_vip = u.is_vip if u else False
@@ -399,6 +398,7 @@ def register(app):
     app.add_handler(CommandHandler("menu", start_menu))
     app.add_handler(CommandHandler("help", help_manual))
     # 只处理其他模块未匹配的回调
-    # 排除: admin_(管理员), vip_(VIP审核), duel_accept/duel_reject(决斗响应), forge_(锻造操作), me_(个人档案操作)
+    # 排除: admin_(管理员), vip_(VIP审核), duel_*(决斗响应), forge_(锻造操作), me_(个人档案操作)
     #       buy_(购买), shop_(商店), wheel_(转盘), airdrop_(空投), mission_(悬赏任务), presence_(活跃度), emby_(媒体库)
-    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_accept|duel_reject|forge_|me_|buy_|shop_|wheel_|airdrop_|mission_|presence_|emby_).*$"), group=1)
+    #       tarot_(塔罗盲盒), view_bag(查看背包)
+    app.add_handler(CallbackQueryHandler(button_callback, pattern="^(?!admin_|vip_|duel_|forge_|me_|buy_|shop_|wheel_|airdrop_|mission_|presence_|emby_|tarot_|view_bag).*$"), group=1)

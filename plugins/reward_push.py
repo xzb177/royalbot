@@ -168,5 +168,5 @@ async def check_reply_reward(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def register(app):
     """注册命令处理器"""
     app.add_handler(CommandHandler("push", cmd_push))
-    # 监听所有文本回复消息
-    app.add_handler(MessageHandler(filters.TEXT & filters.REPLY, check_reply_reward))
+    # 监听所有文本回复消息（使用 group=1，让命令处理器先执行）
+    app.add_handler(MessageHandler(filters.TEXT & filters.REPLY, check_reply_reward), group=1)

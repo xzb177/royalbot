@@ -1,0 +1,14 @@
+services:
+  royalbot:
+    build: .
+    container_name: royalbot
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./bot.log:/app/bot.log
+      - /tmp/royalbot.log:/tmp/royalbot.log
+    working_dir: /app
+    command: ["python", "main.py"]

@@ -240,77 +240,66 @@ async def mission_main(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: 
             total_reward = sum(t["reward"] for t in tasks.values() if not t["done"])
 
             txt = (
-                f"📋 <b>【 每 日 任 务 】</b>\n"
+                f"📋 <b>每 日 任 务</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"👤 <b>魔法少女：</b> {u.emby_account}{vip_badge}\n"
-                f"📊 <b>完成进度：</b> {completed}/{total}\n"
-                f"💰 <b>剩余奖励：</b> {total_reward} MP\n"
+                f"👤 <b>{u.emby_account}</b>{vip_badge}\n"
+                f"📊 进度: <b>{completed}/{total}</b> | 💰 奖励: <b>{total_reward}</b> MP\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
             )
 
             for task in tasks.values():
                 status = "✅" if task["done"] else "⬜"
                 txt += (
-                    f"{status} {task['emoji']} <b>{task['name']}</b>\n"
-                    f"   <i>{task['desc']}</i>\n"
-                    f"   进度: {task['progress']}/{task['target']} | 奖励: {task['reward']} MP\n\n"
+                    f"{status} {task['emoji']} <b>{task['name']}</b> — "
+                    f"{task['progress']}/{task['target']} ({task['reward']} MP)\n"
                 )
 
             txt += (
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"<i>💡 完成任务自动发放奖励</i>\n"
-                f"<i>👑 VIP用户奖励+50%</i>"
+                f"<i>💡 完成任务自动发奖 | 👑 VIP +50%</i>"
             )
 
             buttons = [
                 [InlineKeyboardButton("📜 悬赏任务", callback_data="mission_tab_bounty")],
-                [InlineKeyboardButton("🔄 刷新", callback_data="mission_tab_daily")]
             ]
 
         elif tab == "bounty":
             chat_id = update.effective_chat.id if update.effective_chat else user_id
             bounty = CURRENT_BOUNTY.get(chat_id)
 
-            txt = (
-                f"📜 <b>【 悬 赏 任 务 】</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-            )
-
             if bounty:
                 bounty_type = bounty["type"]
                 bounty_info = BOUNTY_TYPES[bounty_type]
-                txt += (
-                    f"{bounty_info['emoji']} <b>{bounty_info['name']}</b>\n"
-                    f"━━━━━━━━━━━━━━━━━━\n"
-                )
 
                 if bounty_type == "quiz":
-                    txt += f"🧠 <b>魔法谜题：</b> <code>{bounty.get('question', '?')}</code>\n"
+                    desc = f"🧠 <b>魔法谜题：</b> <code>{bounty.get('question', '?')}</code>"
                 else:
                     target = bounty.get("target", 1)
                     desc = bounty_info["desc_template"].format(target=target)
-                    txt += f"{desc}\n"
 
-                txt += (
-                    f"\n💰 <b>悬赏金额：</b> <b>{bounty['reward']} MP</b>\n"
+                txt = (
+                    f"📜 <b>悬 赏 任 务</b>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"<i>\"先完成者得奖！加油！\"</i>"
+                    f"{bounty_info['emoji']} {desc}\n"
+                    f"💰 奖励: <b>{bounty['reward']}</b> MP\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>\"先完成者得奖！\"</i>"
                 )
 
                 buttons = [
+                    [InlineKeyboardButton("🎲 新悬赏", callback_data="mission_refresh_bounty")],
                     [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
                 ]
             else:
-                txt += (
-                    f"<i>当前没有悬赏任务...</i>\n"
+                txt = (
+                    f"📜 <b>悬 赏 任 务</b>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"💡 使用 <code>/mission</code> 发布悬赏\n"
-                    f"💡 管理员可发布群悬赏任务"
+                    f"<i>暂无悬赏，点击下方按钮发布~</i>"
                 )
 
                 buttons = [
+                    [InlineKeyboardButton("🎲 发布悬赏", callback_data="mission_post_bounty")],
                     [InlineKeyboardButton("📋 每日任务", callback_data="mission_tab_daily")],
-                    [InlineKeyboardButton("🎲 发布悬赏", callback_data="mission_post_bounty")]
                 ]
 
 
@@ -439,11 +428,11 @@ async def check_bounty_progress(update: Update, context: ContextTypes.DEFAULT_TY
                 title = BOUNTY_TYPES["chat"]["title"]
 
         elif task_type == "duel":
-            current_wins = u.win or 0
+            current_count = u.daily_duel_count or 0
             if uid not in mission["snapshot"]:
-                mission["snapshot"][uid] = current_wins
+                mission["snapshot"][uid] = current_count
             else:
-                delta = current_wins - mission["snapshot"][uid]
+                delta = current_count - mission["snapshot"][uid]
                 mission["progress"][uid] = delta
                 if delta >= mission["target"]:
                     completed = True
@@ -664,6 +653,8 @@ async def mission_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "mission_tab_bounty":
         await mission_main(update, context, "bounty")
     elif data == "mission_post_bounty":
+        # 发布悬赏后刷新界面
+        chat_id = query.message.chat.id
         # 创建假的 update 用于 post_bounty
         fake_update = type('Update', (), {
             'effective_message': query.message,
@@ -671,19 +662,40 @@ async def mission_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'effective_user': query.from_user,
         })()
         await post_bounty(fake_update, context)
+        # 刷新悬赏界面
+        await mission_main(update, context, "bounty")
+    elif data == "mission_refresh_bounty":
+        # 刷新悬赏（删除旧的，发布新的）
+        chat_id = query.message.chat.id
+        if chat_id in CURRENT_BOUNTY:
+            # 删除旧悬赏的消息
+            try:
+                old_bounty = CURRENT_BOUNTY[chat_id]
+                if "msg" in old_bounty:
+                    await old_bounty["msg"].delete()
+            except Exception:
+                pass
+            del CURRENT_BOUNTY[chat_id]
+        # 发布新悬赏
+        fake_update = type('Update', (), {
+            'effective_message': query.message,
+            'effective_chat': query.message.chat,
+            'effective_user': query.from_user,
+        })()
+        await post_bounty(fake_update, context)
+        # 刷新界面
+        await mission_main(update, context, "bounty")
 
 
 # ==========================================
 # 注册处理器
 # ==========================================
 def register(app):
+    # 任务主命令（/mission）
     app.add_handler(CommandHandler("mission", mission_main))
-    app.add_handler(CommandHandler("missions", mission_main))
-    app.add_handler(CommandHandler("tasks", mission_main))
-    app.add_handler(CommandHandler("task", post_bounty))
 
+    # 任务相关回调
     app.add_handler(CallbackQueryHandler(mission_callback, pattern=r"^mission_"))
-    app.add_handler(CallbackQueryHandler(mission_callback, pattern=r"^mission_tab_"))
 
-    # 监听所有文本消息
+    # 监听所有文本消息（用于每日任务进度追踪）
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_chat_message))

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
-from telegram.ext import CommandHandler, ContextTypes, CallbackContext
+from telegram.ext import CommandHandler, ContextTypes, CallbackContext, CallbackQueryHandler
 from config import Config
 from utils import reply_with_auto_delete
 from database import get_session, UserBinding

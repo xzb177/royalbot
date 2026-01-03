@@ -45,9 +45,11 @@ class UserBinding(Base):
     # === 时间记录 ===
     last_checkin = Column(DateTime)      # 上次签到时间
     last_tarot = Column(DateTime)        # 上次塔罗牌抽取时间
+    last_duel_date = Column(DateTime)    # 上次决斗日期（用于每日计数重置）
 
     # === 悬赏任务追踪 ===
     daily_chat_count = Column(Integer, default=0)      # 今日聊天条数
+    daily_duel_count = Column(Integer, default=0)      # 今日决斗次数
     daily_forge_count = Column(Integer, default=0)     # 今日锻造次数
     daily_tarot_count = Column(Integer, default=0)     # 今日占卜次数
     daily_box_count = Column(Integer, default=0)       # 今日盲盒次数

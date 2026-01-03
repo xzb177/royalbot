@@ -4,6 +4,116 @@
 
 ---
 
+## 2026-01-02 塔罗盲盒系统统一
+
+### 1. 搞定了啥
+- **统一塔罗盲盒系统**：将 `/tarot` 和 `/poster` 合并为统一抽取系统
+- **从 Emby API 获取电影**：随机抽取电影作为抽取内容
+- **稀有度判定**：根据评分 + 随机暴击计算稀有度
+  - UR: 评分 ≥ 8.5 + 30% 暴击，返利 200 MP
+  - SSR: 评分 ≥ 7.5 + 50% 暴击，返利 50 MP
+  - SR: 评分 ≥ 6.0
+  - R: 评分 ≥ 4.0
+  - N/CURSED: 评分 < 4.0
+- **物品存入背包**：格式 `🌈 电影名 (UR)`
+- **消耗机制**：每日免费一次，额外抽取消耗 25/50 MP（VIP 5折）
+- **按钮交互**：再抽一次、查看背包
+
+### 2. 关键信息
+
+**修改的文件（2个）：**
+- `plugins/fun_games.py` - 完全重写塔罗盲盒系统
+- `plugins/start_menu.py` - 添加 `tarot_` 和 `view_bag` 回调排除
+
+**删除的内容：**
+- 旧的 `TAROT_CARDS` 塔罗牌列表（固定文本）
+- 旧的 `GACHA_ITEMS` 盲盒物品列表
+- `gacha_poster()` 函数（独立盲盒）
+
+**新增的函数：**
+- `fetch_random_movie()` - 从 Emby 获取随机电影
+- `calculate_rarity()` - 根据评分+随机计算稀有度
+- `get_rarity_comment()` - 获取看板娘点评
+- `tarot_gacha()` - 统一抽取函数
+- `tarot_retry_callback()` - 再抽一次按钮
+- `view_bag_callback()` - 查看背包按钮
+
+**命令对照：**
+| 命令 | 功能 |
+|------|------|
+| `/tarot` | 塔罗盲盒抽取（主要） |
+| `/poster` | 塔罗盲盒抽取（别名） |
+| `/fate` | 塔罗盲盒抽取（别名） |
+
+**稀有度概率：**
+| 稀有度 | 条件 | 概率 | 返利 |
+|--------|------|------|------|
+| UR | 评分≥8.5 + 30% | 约 1-2% | 200 MP |
+| SSR | 评分≥7.5 + 50% | 约 5-8% | 50 MP |
+| SR | 评分≥6.0 | 约 30% | 0 |
+| R | 评分≥4.0 | 约 40% | 0 |
+| N | 评分<4.0 | 约 15% | 0 |
+| CURSED | 评分<4.0 + 20% | 约 5% | 0 |
+
+### 3. 接下来该干嘛
+- **需要重启机器人**使更改生效
+- 测试 `/tarot` 命令验证 Emby 连接
+- 如需调整稀有度概率，修改 `calculate_rarity()` 函数
+
+### 4. 测试结果
+```
+========================= 28 passed, 1 warning in 0.37s =========================
+```
+
+---
+
+## 2026-01-02 决斗系统 + 任务系统优化
+
+### 1. 搞定了啥
+- **决斗系统修复**：修复 `daily_duel_count` 字段缺失、悬赏任务追踪、命令无响应等问题
+- **任务系统优化**：悬赏发布集成到界面，删除冗余命令，界面简化
+- **其他修复**：`emby_monitor.py` 缺少导入、`start_menu.py` 重复导入等
+
+### 2. 关键信息
+
+**决斗系统修复：**
+| 问题 | 解决方案 |
+|------|----------|
+| 缺少 `daily_duel_count` 字段 | 数据库迁移添加字段 |
+| 悬赏任务使用总胜场追踪 | 改用 `daily_duel_count` |
+| `emby_monitor.py` 缺少 `CallbackQueryHandler` | 添加导入 |
+| `start_menu.py` 函数内重复导入 | 删除重复导入 |
+| `reward_push.py` 拦截回复消息 | MessageHandler 移到 group=1 |
+| 回复消息时命令无响应 | 修改 handler 执行顺序 |
+
+**任务系统优化：**
+- 删除 `/missions`, `/tasks`, `/task` 命令
+- 保留 `/mission` 主命令
+- 悬赏发布集成到界面，点击按钮即可发布
+- 界面文本简化，单行显示任务进度
+
+**修改的文件（6个）：**
+```
+database/models.py          - 新增 daily_duel_count, last_duel_date 字段
+plugins/fun_games.py         - 决斗更新 daily_duel_count，优化提示
+plugins/unified_mission.py   - 悬赏追踪用 daily_duel_count，界面优化
+plugins/emby_monitor.py      - 添加 CallbackQueryHandler 导入
+plugins/start_menu.py        - 删除函数内重复导入
+plugins/reward_push.py       - MessageHandler 移到 group=1
+```
+
+**数据库迁移：**
+```sql
+ALTER TABLE bindings ADD COLUMN last_duel_date DATETIME;
+ALTER TABLE bindings ADD COLUMN daily_duel_count INTEGER DEFAULT 0;
+```
+
+### 3. 接下来该干嘛
+- 决斗系统和任务系统已完全正常
+- 可以继续开发其他功能
+
+---
+
 ## 2026-01-01 初始化备忘录
 
 ### 1. 搞定了啥
@@ -2842,6 +2952,107 @@ await some_async_function()
 
 ---
 
+## 2026-01-02 修复决斗系统按钮无响应问题
+
+### 1. 搞定了啥
+- **修复 UnboundLocalError**：移除 `start_menu.py` 函数内部的重复导入
+- **问题原因**：函数内 `from database import get_session` 使整个函数将 `get_session` 视为局部变量，导致在 import 语句之前的调用失败
+
+### 2. 关键信息
+**错误日志：**
+```
+UnboundLocalError: cannot access local variable 'get_session' where it is not associated with a value
+File "/root/royalbot/plugins/start_menu.py", line 148, in button_callback
+    with get_session() as session:
+```
+
+**问题代码：**
+```python
+# 模块顶部已导入
+from database import get_session, UserBinding
+
+async def button_callback(update, context):
+    # ... 其他代码 ...
+    if data == "back_menu":
+        with get_session() as session:  # 这里正常工作
+            ...
+    elif data == "vip":
+        from database import get_session, UserBinding  # 这行导致 get_session 变成局部变量
+        with get_session() as session:
+            ...
+```
+
+**修复方案：**
+删除 `button_callback` 函数内部第 255 行的重复导入：
+```python
+# 修复前
+elif data == "vip":
+    user = query.from_user
+    from database import get_session, UserBinding  # 删除这行
+    with get_session() as session:
+
+# 修复后
+elif data == "vip":
+    user = query.from_user
+    with get_session() as session:
+```
+
+**修改的文件：**
+- `plugins/start_menu.py` - 删除函数内重复导入
+
+### 3. 接下来该干嘛
+- 重启机器人生效
+- 测试 `/duel` 命令
+
+---
+
+## 2026-01-02 修复决斗系统悬赏任务追踪
+
+### 1. 搞定了啥
+- **添加决斗每日计数器**：数据库新增 `daily_duel_count` 和 `last_duel_date` 字段
+- **修改决斗系统**：决斗结束时更新双方每日决斗次数，自动跨日重置
+- **修改悬赏任务追踪**：使用 `daily_duel_count` 代替总胜场 `win` 的 snapshot 机制
+
+### 2. 关键信息
+**问题原因：**
+- 其他功能都有每日计数器（`daily_chat_count`, `daily_forge_count` 等）
+- 决斗系统缺少 `daily_duel_count`，导致悬赏任务无法正确追踪
+- 原来使用 `u.win` 总胜场计算增量，但逻辑不正确
+
+**修改的文件（3个）：**
+- `database/models.py` - 新增字段：
+  ```python
+  daily_duel_count = Column(Integer, default=0)  # 今日决斗次数
+  last_duel_date = Column(DateTime)            # 上次决斗日期
+  ```
+
+- `plugins/fun_games.py` - 决斗结束时更新计数器：
+  ```python
+  # 检查计数器是否需要重置（跨日）
+  if last_date < today:
+      winner.daily_duel_count = 1
+  else:
+      winner.daily_duel_count = (winner.daily_duel_count or 0) + 1
+  winner.last_duel_date = now
+  ```
+
+- `plugins/unified_mission.py` - 悬赏追踪改用计数器：
+  ```python
+  # 修改前：使用总胜场
+  current_wins = u.win or 0
+  delta = current_wins - mission["snapshot"][uid]
+
+  # 修改后：使用每日决斗次数
+  current_count = u.daily_duel_count or 0
+  delta = current_count - mission["snapshot"][uid]
+  ```
+
+### 3. 接下来该干嘛
+- **机器人需要重启**使新字段生效
+- 测试决斗悬赏任务是否正确追踪进度
+
+---
+
 ## 2026-01-02 代码质量保障体系建设
 
 ### 1. 搞定了啥
@@ -3168,4 +3379,11 @@ Push/PR → GitHub Actions 触发 → 运行测试 → 结果反馈
 - 在 GitHub 仓库配置分支保护规则
 - 测试 CI/CD 流程：创建一个测试 PR
 - 等待用户指示下一项任务
+
+### 8. Git 提交
+- **提交 ID**: `6cb4a7e`
+- **仓库**: `git@github.com:xzb177/royalbot.git`
+- **变更**: 30 个文件，5851 行新增，2599 行删除
+- **推送**: 已推送到 main 分支
+- **群组通知**: 已发送更新通知
 

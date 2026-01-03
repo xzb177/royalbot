@@ -37,9 +37,17 @@ def load_plugins(app):
             except Exception as e:
                 print(f"💥 模块加载失败 {module_name}: {e}")
 
+async def post_init(application: ApplicationBuilder) -> None:
+    """Bot 启动后的初始化回调"""
+    application.bot_data = {
+        "duels": {},  # 决斗数据存储
+        "duel_stats": {},  # 决斗统计 {user_id: {"wins": int, "losses": int, "streak": int}}
+    }
+    print("✅ bot_data 初始化完成")
+
 if __name__ == '__main__':
     print("🪄 正在唤醒云海看板娘...")
-    app = ApplicationBuilder().token(Config.BOT_TOKEN).build()
+    app = ApplicationBuilder().token(Config.BOT_TOKEN).post_init(post_init).build()
 
     load_plugins(app)
 
