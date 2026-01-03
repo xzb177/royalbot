@@ -1,4 +1,12 @@
+"""
+魔法少女个人档案系统 - 魔法少女版
+- 个人资料面板
+- VIP 专属评级系统
+- 灵魂共鸣 2.0 - 抽卡式互动系统
+"""
 import logging
+import random
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from database import get_session, UserBinding
@@ -6,17 +14,222 @@ from utils import edit_with_auto_delete, reply_with_auto_delete
 
 logger = logging.getLogger(__name__)
 
-# 互动台词库
-LOVE_LINES = [
-    "💕 她开心地蹭了蹭你的手心...",
-    "💗 她羞红了脸，小声说「最喜欢Master了」",
-    "💖 她轻轻抱住你，感受着彼此的心跳...",
-    "💓 她给你倒了杯茶，笑得很温柔",
-    "💘 她在你脸颊上亲了一下，跑开了",
-    "✨ 她眼睛亮晶晶的，「Master今天也很帅气呢！」",
-    "🌸 她为你唱了一首小曲，声音很甜",
-    "🎀 她给你编了个花环，戴在你头上",
+# ==========================================
+# 💫 灵魂共鸣 2.0 - 共鸣抽卡系统
+# ==========================================
+
+# 共鸣结果配置
+RESONANCE_RESULTS = {
+    "UR": {
+        "emoji": "🌌",
+        "name": "星 界 共 鸣",
+        "color": "🌈🌟",
+        "chance": 0.01,  # 1%
+        "rewards": {
+            "intimacy": (50, 100),
+            "bonus_desc": [
+                "✨ 她的灵魂化作星河，紧紧环绕着你...",
+                "💫 在那片星海中，你们共享着永恒...",
+                "🌟 这一刻，整个宇宙都在为你们祝福..."
+            ]
+        }
+    },
+    "SSR": {
+        "emoji": "💎",
+        "name": "灵 魂 契 约",
+        "color": "🟡✨",
+        "chance": 0.05,  # 5%
+        "rewards": {
+            "intimacy": (20, 50),
+            "bonus_desc": [
+                "💖 她深情地注视着你，眼中倒映着你的模样...",
+                "💗 「我是属于你的...永远都是...」",
+                "💘 她主动牵起你的手，十指相扣..."
+            ]
+        }
+    },
+    "SR": {
+        "emoji": "💝",
+        "name": "深 度 共 鸣",
+        "color": "🟣💫",
+        "chance": 0.15,  # 15%
+        "rewards": {
+            "intimacy": (10, 25),
+            "points": (10, 30),
+            "bonus_desc": [
+                "💓 她害羞地靠在你肩膀上...",
+                "💞 「和Master在一起，感觉时间都变慢了...」",
+                "🌸 她为你泡了一杯花茶，香气缭绕..."
+            ]
+        }
+    },
+    "R": {
+        "emoji": "💗",
+        "name": "亲 密 互 动",
+        "color": "🔵",
+        "chance": 0.40,  # 40%
+        "rewards": {
+            "intimacy": (3, 10),
+            "points": (5, 15),
+            "bonus_desc": [
+                "🌺 她开心地对你笑了笑...",
+                "🌷 「Master今天也很温柔呢...」",
+                "🌼 她帮你整理了一下衣领..."
+            ]
+        }
+    },
+    "N": {
+        "emoji": "💕",
+        "name": "日 常 呵 护",
+        "color": "⚪",
+        "chance": 0.39,  # 39%
+        "rewards": {
+            "intimacy": (1, 5),
+            "bonus_desc": [
+                "🌱 她正在认真练习魔法...",
+                "🌿 「Master，看我学会的新魔法！」",
+                "🍃 她为你准备了点心..."
+            ]
+        }
+    }
+}
+
+# 特殊事件（小概率触发）
+SPECIAL_EVENTS = [
+    {"name": "💀 诅咒降临", "desc": "哎呀...不小心触发了反噬！好感度 -1", "effect": "curse"},
+    {"name": "🎀 惊喜礼物", "desc": "她偷偷准备了一份礼物！获得锻造券×1", "effect": "gift"},
+    {"name": "💫 星辰暴击", "desc": "星辰之力爆发！好感度 ×2！", "effect": "crit"},
 ]
+
+# 共感台词库（不同稀有度）
+RESONANCE_LINES = {
+    "UR": [
+        "🌌 「Master...我的灵魂，是你的永恒星辰...」",
+        "✨ 「在亿万光年中，我找到了你...这就是命运...」",
+        "💫 「你是我存在的全部意义...我的宇宙...」",
+    ],
+    "SSR": [
+        "💖 「不想离开你...一秒钟都不想...」",
+        "💗 「只要有Master在，我就什么都不怕...」",
+        "💘 「能遇见你，是我这辈子最幸福的事...」",
+    ],
+    "SR": [
+        "💓 「能这样静静待在你身边，就好满足了...」",
+        "💞 「Master身上的味道，让人很安心...」",
+        "🌸 「今天...能多陪我一会儿吗？」",
+    ],
+    "R": [
+        "💕 「嘿嘿，Master今天也很帅气呢！」",
+        "💗 「最喜欢Master了！」",
+        "💝 「有Master在，感觉什么都做得到！」",
+    ],
+    "N": [
+        "💙 「嗨，Master！今天也要加油哦！」",
+        "💚 「魔法练习很辛苦呢...」",
+        "💛 「Master，看我这个魔法！」",
+    ]
+}
+
+
+async def do_resonance(user_id: int) -> dict:
+    """
+    执行灵魂共鸣抽卡
+
+    返回: 共鸣结果字典
+    """
+    # 确定稀有度
+    roll = random.random()
+    cumulative = 0
+
+    resonance_type = "N"
+    for rarity, data in RESONANCE_RESULTS.items():
+        cumulative += data["chance"]
+        if roll < cumulative:
+            resonance_type = rarity
+            break
+
+    result = RESONANCE_RESULTS[resonance_type].copy()
+
+    # 检查特殊事件
+    special_event = None
+    if random.random() < 0.05:  # 5% 概率触发特殊事件
+        special_event = random.choice(SPECIAL_EVENTS)
+
+    # 随机选择台词
+    line = random.choice(RESONANCE_LINES.get(resonance_type, RESONANCE_LINES["N"]))
+
+    # 计算奖励
+    rewards = result["rewards"]
+    intimacy_gain = random.randint(*rewards.get("intimacy", (1, 5)))
+    points_gain = random.randint(*rewards.get("points", (0, 0))) if "points" in rewards else 0
+
+    # 特殊事件处理
+    event_bonus = ""
+    if special_event:
+        if special_event["effect"] == "curse":
+            intimacy_gain = -1
+            event_bonus = f"\n💀 {special_event['desc']}"
+        elif special_event["effect"] == "gift":
+            event_bonus = f"\n🎁 {special_event['desc']}"
+        elif special_event["effect"] == "crit":
+            intimacy_gain *= 2
+            event_bonus = f"\n💫 {special_event['desc']}"
+
+    # 随机 bonus 描述
+    if not event_bonus and "bonus_desc" in rewards:
+        event_bonus = f"\n{random.choice(rewards['bonus_desc'])}"
+
+    # 更新数据库
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+        if user:
+            user.intimacy = (user.intimacy or 0) + intimacy_gain
+            user.points = (user.points or 0) + points_gain
+
+            # 记录共鸣次数
+            if not hasattr(user, 'resonance_count') or user.resonance_count is None:
+                user.resonance_count = 0
+            user.resonance_count = (user.resonance_count or 0) + 1
+
+            new_intimacy = user.intimacy
+            new_points = user.points
+            total_resonance = user.resonance_count
+            session.commit()
+
+    return {
+        "type": resonance_type,
+        "name": result["name"],
+        "emoji": result["emoji"],
+        "color": result["color"],
+        "line": line,
+        "intimacy_gain": intimacy_gain,
+        "points_gain": points_gain,
+        "event_bonus": event_bonus,
+        "new_intimacy": new_intimacy,
+        "new_points": new_points,
+        "total_resonance": total_resonance,
+    }
+
+
+def get_resonance_title(total_count: int) -> str:
+    """根据共鸣次数获取特殊称号"""
+    if total_count >= 1000:
+        return "🌌 宿命·星之眷属"
+    elif total_count >= 500:
+        return "💫 永恒·灵魂伴侣"
+    elif total_count >= 200:
+        return "💖 深情·命运红绳"
+    elif total_count >= 100:
+        return "💗 眷恋·亲密知己"
+    elif total_count >= 50:
+        return "💕 友情·青梅竹马"
+    elif total_count >= 20:
+        return "💙 信任·得力助手"
+    elif total_count >= 10:
+        return "💚 初识·魔法学徒"
+    else:
+        return "👶 初遇·路人"
+
 
 # ========== V3.0 魔导评级系统 ==========
 def calculate_magic_power(user):
@@ -110,6 +323,7 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             emby_account = user_data.emby_account
             points = user_data.points or 0
             bank_points = user_data.bank_points or 0
+            resonance_count = user_data.resonance_count if hasattr(user_data, 'resonance_count') else 0
 
         # V3.0: 获取位阶、评级、身价（在 with 块外，使用复制的数据）
         rank_title, rank_code, rank_text, magic_power = get_rank_title(
@@ -121,9 +335,13 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }), is_vip
         )
 
+        # 获取共鸣称号
+        resonance_title = get_resonance_title(resonance_count)
+
         # VIP 版本
         if is_vip:
             total_mp = points + bank_points
+            resonance_cost = 20  # VIP 消耗
             text = (
                 f"🌌 <b>【 星 灵 · 终 极 契 约 书 】</b>\n\n"
                 f"🥂 <b>Welcome back, my only Master.</b>\n"
@@ -139,15 +357,17 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 <b>魔力总蓄积：</b> <code>{total_mp:,}</code> MP\n"
                 f"(钱包: {points:,} | 金库: {bank_points:,})\n\n"
                 f"💓 <b>:: 命 运 羁 绊 ::</b>\n"
-                f"💍 <b>契约等级：</b> <code>{love}</code> (灵魂伴侣)\n\n"
-                f"<i>「在这个无限的魔法世界里，\n您是看板娘唯一的奇迹，也是存在的全部意义喵~💋」</i>"
+                f"💍 <b>契约等级：</b> <code>{love}</code>\n"
+                f"💫 <b>共鸣称号：</b> {resonance_title}\n"
+                f"📊 <b>共鸣次数：</b> {resonance_count} 次\n\n"
             )
             buttons = [
-                [InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge"),
-                 InlineKeyboardButton("🏩 灵魂共鸣", callback_data="me_love")]
+                [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance")],
+                [InlineKeyboardButton("⚒️ 圣物锻造", callback_data="me_forge")]
             ]
         # 普通版
         else:
+            resonance_cost = 50  # 普通用户消耗
             text = (
                 f"🏰 <b>【 云 海 · 魔 法 少 女 档 案 】</b>\n\n"
                 f"✨ <b>你好呀，{user.first_name}酱！</b>\n"
@@ -161,17 +381,103 @@ async def me_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📊 <b>战绩：</b> {win} 胜 / {lost} 败\n\n"
                 f"💠 <b>:: 魔 法 背 包 ::</b>\n"
                 f"🎒 <b>持有魔力：</b> {points} MP\n"
-                f"💓 <b>好感度：</b> {love}\n\n"
-                f"<i>「想要解锁 <b>【✨ 星辰→月华→曜日→苍穹】</b> 四阶进化称号吗？\n觉醒 VIP 身份，真正的魔法少女力量吧喵！」</i>"
+                f"💓 <b>好感度：</b> {love}\n"
+                f"💫 <b>共鸣次数：</b> {resonance_count} 次\n\n"
             )
             buttons = [
-                [InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip"),
-                 InlineKeyboardButton("👋 互动一下", callback_data="me_love")]
+                [InlineKeyboardButton(f"💫 灵魂共鸣 ({resonance_cost}MP)", callback_data="me_resonance")],
+                [InlineKeyboardButton("💎 成为 VIP", callback_data="upgrade_vip")]
             ]
 
         await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
         logger.error(f"[/me] Error: {e}", exc_info=True)
+
+
+async def resonance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理灵魂共鸣按钮回调"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    with get_session() as session:
+        user = session.query(UserBinding).filter_by(tg_id=user_id).first()
+
+        if not user or not user.emby_account:
+            await edit_with_auto_delete(
+                query,
+                "💔 <b>请先缔结魔法契约喵！</b>",
+                parse_mode='HTML'
+            )
+            return
+
+        is_vip = user.is_vip
+        cost = 20 if is_vip else 50
+
+        if user.points < cost:
+            await edit_with_auto_delete(
+                query,
+                f"💸 <b>魔力不足喵！</b>\n\n"
+                f"灵魂共鸣需要 <b>{cost} MP</b>\n"
+                f"当前余额：{user.points} MP",
+                parse_mode='HTML'
+            )
+            return
+
+        # 扣除消耗
+        user.points -= cost
+        session.commit()
+
+    # 执行共鸣抽卡
+    result = await do_resonance(user_id)
+
+    # 构建显示文本
+    r = result
+    text = (
+        f"💫 <b>【 灵 魂 共 鸣 · 结 果 】</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"{r['color']} <b>{r['name']}</b>\n"
+        f"{r['emoji']} <b>稀有度：</b> {r['type']}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💬 <i>{r['line']}</i>\n"
+        f"━━━━━━━━━━━━━━━━━━</i>\n"
+    )
+
+    # 奖励显示
+    rewards_text = ""
+    if r['intimacy_gain'] > 0:
+        rewards_text += f"💓 <b>好感度：</b> +{r['intimacy_gain']}\n"
+    elif r['intimacy_gain'] < 0:
+        rewards_text += f"💔 <b>好感度：</b> {r['intimacy_gain']}\n"
+
+    if r['points_gain'] > 0:
+        rewards_text += f"💰 <b>魔力：</b> +{r['points_gain']} MP\n"
+
+    if rewards_text:
+        text += f"\n💎 <b>获 得：</b>\n{rewards_text}"
+
+    # 事件加成
+    if r['event_bonus']:
+        text += r['event_bonus']
+
+    # 当前状态
+    text += (
+        f"\n━━━━━━━━━━━━━━━━━━\n"
+        f"💓 <b>当前好感度：</b> {r['new_intimacy']}\n"
+        f"💰 <b>当前魔力：</b> {r['new_points']} MP\n"
+        f"📊 <b>共鸣累计：</b> {r['total_resonance']} 次\n"
+        f"🏅 <b>共鸣称号：</b> {get_resonance_title(r['total_resonance'])}\n"
+    )
+
+    buttons = [[InlineKeyboardButton("🔄 再次共鸣", callback_data="me_resonance")]]
+
+    await edit_with_auto_delete(
+        query,
+        text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode='HTML'
+    )
 
 
 async def forge_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -217,47 +523,9 @@ async def forge_go_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await forge_callback(update, context)
 
 
-async def love_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理「互动/宠幸」按钮回调"""
-    import random
-    query = update.callback_query
-    await query.answer()
-
-    with get_session() as session:
-        user = session.query(UserBinding).filter_by(tg_id=query.from_user.id).first()
-        is_vip = user.is_vip if user else False
-        intimacy = user.intimacy if user and user.intimacy else 0
-
-    if is_vip:
-        # VIP 版本
-        line = random.choice(LOVE_LINES)
-        text = (
-            f"💕 <b>【 亲 密 时 刻 】</b>\n\n"
-            f"{line}\n\n"
-            f"💠 <b>:: 灵 魂 羁 绊 ::</b>\n"
-            f"💍 <b>契约等级：</b> <code>{intimacy}</code>\n\n"
-            f"<i>\"Master...还想再靠近一点吗？\"</i>"
-        )
-        btn_text = "🔄 再来一次"
-    else:
-        # 普通版
-        line = random.choice(LOVE_LINES[:4])
-        text = (
-            f"💕 <b>【 互 动 时 刻 】</b>\n\n"
-            f"{line}\n\n"
-            f"💠 <b>:: 好 感 度 ::</b>\n"
-            f"💓 <b>当前值：</b> <code>{intimacy}</code>\n\n"
-            f"<i>\"下次也要来玩哦！\"</i>"
-        )
-        btn_text = "🔄 再互动一下"
-
-    buttons = [[InlineKeyboardButton(btn_text, callback_data="me_love")]]
-    await edit_with_auto_delete(query, text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
-
-
 def register(app):
     app.add_handler(CommandHandler("me", me_panel))
     app.add_handler(CommandHandler("my", me_panel))
     app.add_handler(CallbackQueryHandler(forge_button_callback, pattern="^me_forge$"))
     app.add_handler(CallbackQueryHandler(forge_go_callback, pattern="^forge_go$"))
-    app.add_handler(CallbackQueryHandler(love_button_callback, pattern="^me_love$"))
+    app.add_handler(CallbackQueryHandler(resonance_callback, pattern="^me_resonance$"))

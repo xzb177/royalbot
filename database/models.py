@@ -41,6 +41,7 @@ class UserBinding(Base):
     weapon = Column(String, default=None)     # 装备武器
     attack = Column(Integer, default=0)       # 战力数值
     intimacy = Column(Integer, default=0)     # 好感度
+    resonance_count = Column(Integer, default=0)  # 灵魂共鸣累计次数
 
     # === 时间记录 ===
     last_checkin = Column(DateTime)      # 上次签到时间

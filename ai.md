@@ -4,6 +4,16 @@
 
 ---
 
+## ⚠️ 重要规则
+
+### 运维规范
+- **必须通过 Docker 容器运行**：禁止直接运行 `python main.py`
+- **更新代码后**：`docker build -t royalbot-royalbot . && /root/royalbot/restart.sh`
+- **查看日志**：`docker logs royalbot -f`
+- **重启**：`/root/royalbot/restart.sh`
+
+---
+
 ## 2026-01-02 塔罗盲盒系统统一
 
 ### 1. 搞定了啥
@@ -3599,4 +3609,85 @@ await track_activity_wrapper(user_id, "task_type")
 ### 3. 接下来该干嘛
 - 机器人已重启（PID: 2815204）
 - 测试各功能完成任务后，`/mission` 命令的进度是否实时更新
+
+---
+
+## 2026-01-03 运行方式切换至 Docker 容器
+
+### 1. 搞定了啥
+- **切换至 Docker 容器运行**：停止宿主机直接运行，改用 Docker 容器
+- **修改重启脚本**：`restart.sh` 改为使用 `docker run`
+- **统一运维方式**：后续所有更新、功能增加、运维都在容器中进行
+
+### 2. 关键信息
+**容器配置：**
+```bash
+docker run -d \
+  --name royalbot \
+  --restart unless-stopped \
+  --network host \
+  -e TZ=Asia/Shanghai \
+  -e PYTHONUNBUFFERED=1 \
+  -v /root/royalbot/bot.log:/app/bot.log \
+  royalbot-royalbot:latest
+```
+
+**运维命令：**
+| 操作 | 命令 |
+|------|------|
+| 查看日志 | `docker logs royalbot` |
+| 重启 | `/root/royalbot/restart.sh` |
+| 停止 | `docker stop royalbot` |
+| 进入容器 | `docker exec -it royalbot bash` |
+| 更新代码后重建 | `docker build -t royalbot-royalbot . && restart.sh` |
+
+### 3. 接下来该干嘛
+- ✅ 容器已正常运行
+- 后续所有操作都通过 Docker 进行
+
+---
+
+## 2026-01-03 灵魂共鸣系统 2.0 重做
+
+### 1. 搞定了啥
+- **重做灵魂共鸣系统**：从简单随机台词改为抽卡式互动系统
+- **稀有度系统**：UR(1%) > SSR(5%) > SR(15%) > R(40%) > N(39%)
+- **称号系统**：共鸣次数累计解锁特殊称号（路人→宿命·星之眷属）
+- **特殊事件**：5% 概率触发诅咒/暴击/礼物等特殊效果
+
+### 2. 关键信息
+**抽卡消耗：**
+| 用户类型 | 消耗 MP |
+|---------|---------|
+| VIP | 20 |
+| 普通 | 50 |
+
+**稀有度配置：**
+| 稀有度 | 概率 | 好感度奖励 | MP奖励 |
+|-------|------|-----------|--------|
+| UR 星界共鸣 | 1% | 50-100 | - |
+| SSR 灵魂契约 | 5% | 20-50 | - |
+| SR 深度共鸣 | 15% | 10-25 | 10-30 |
+| R 亲密互动 | 40% | 3-10 | 5-15 |
+| N 日常呵护 | 39% | 1-5 | - |
+
+**共鸣称号（累计次数）：**
+| 次数 | 称号 |
+|------|------|
+| 0-9 | 👶 初遇·路人 |
+| 10-19 | 💚 初识·魔法学徒 |
+| 20-49 | 💙 信任·得力助手 |
+| 50-99 | 💕 友情·青梅竹马 |
+| 100-199 | 💗 眷恋·亲密知己 |
+| 200-499 | 💖 深情·命运红绳 |
+| 500-999 | 💫 永恒·灵魂伴侣 |
+| 1000+ | 🌌 宿命·星之眷属 |
+
+**修改的文件：**
+- `plugins/me.py` - 完全重写灵魂共鸣逻辑
+- `database/models.py` - 添加 `resonance_count` 字段
+
+### 3. 接下来该干嘛
+- 容器已重启（PID: f7fd6d709ff3）
+- 测试 `/me` 命令的灵魂共鸣功能
 
