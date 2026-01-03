@@ -12,7 +12,7 @@
 """
 
 # === 模型类 ===
-from database.models import Base, UserBinding, VIPApplication, RedPacket
+from database.models import Base, UserBinding, VIPApplication, RedPacket, Guild
 
 # === 数据库会话 ===
 from database.repository import (
@@ -61,6 +61,7 @@ __all__ = [
     'UserBinding',
     'VIPApplication',
     'RedPacket',
+    'Guild',
 
     # 会话
     'get_session',

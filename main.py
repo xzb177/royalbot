@@ -10,7 +10,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import Config
-from config.commands import BOT_COMMANDS
+from app_config import BOT_COMMANDS
 
 # 加载配置
 Config.validate()
