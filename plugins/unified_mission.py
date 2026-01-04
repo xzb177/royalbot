@@ -552,8 +552,27 @@ async def check_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_text = update.message.text.strip()
+    correct_answer = mission["answer"]
 
-    if user_text == mission["answer"]:
+    # 尝试多种匹配方式
+    is_correct = False
+
+    # 1. 精确匹配
+    if user_text == correct_answer:
+        is_correct = True
+    # 2. 去空格匹配（如 "45-97"）
+    elif user_text.replace(" ", "") == correct_answer:
+        is_correct = True
+    # 3. 中文数字格式 (如 "负五十二" 或 "负52")
+    elif user_text.startswith("负") or user_text.startswith("minus") or user_text.startswith("-"):
+        num_part = user_text[1:] if user_text[0] in "负-" else user_text[5:]
+        try:
+            if int(num_part) == int(correct_answer):
+                is_correct = True
+        except ValueError:
+            pass
+
+    if is_correct:
         await settle_bounty(update, context, update.effective_user.id, BOUNTY_TYPES["quiz"]["title"])
 
 
@@ -572,6 +591,7 @@ async def settle_bounty(update: Update, context: ContextTypes.DEFAULT_TYPE, winn
 
         bonus_msg = ""
         winner_name = update.effective_user.first_name
+        points_awarded = False
 
         if u:
             if u.is_vip:
@@ -581,7 +601,11 @@ async def settle_bounty(update: Update, context: ContextTypes.DEFAULT_TYPE, winn
 
             u.points += reward
             winner_name = u.emby_account or winner_name
+            points_awarded = True
             session.commit()
+        else:
+            # 未绑定用户，提示绑定后奖励
+            bonus_msg = f" (请先 /bind 绑定账号后联系管理员领取)"
 
 
     task_type = mission["type"]
@@ -620,6 +644,9 @@ async def on_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type == "private":
         return
 
+    # 先检查数学题（即使未绑定也能回答）
+    await check_quiz_answer(update, context)
+
     with get_session() as session:
         u = session.query(UserBinding).filter_by(tg_id=user.id).first()
 
@@ -657,9 +684,6 @@ async def on_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 检查悬赏进度（在 with 块外）
     await check_bounty_progress(update, context, "chat")
-
-    # 检查数学题
-    await check_quiz_answer(update, context)
 
 
 # ==========================================
