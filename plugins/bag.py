@@ -52,13 +52,10 @@ def get_item_rarity(item_name: str) -> tuple:
 
 
 async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """显示用户背包（支持命令和回调两种方式）"""
     query = getattr(update, "callback_query", None)
     msg = update.effective_message
-    if not msg:
-        return
-    """显示用户背包（精简版）"""
-    msg = update.effective_message
-    if not msg:
+    if not msg and not query:
         return
 
     user_id = update.effective_user.id
@@ -67,11 +64,11 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 检查是否绑定
         if not u or not u.emby_account:
-            await reply_with_auto_delete(
-                msg,
-                "💔 <b>请先绑定账号喵！</b>\n\n"
-                "使用 <code>/bind 账号</code> 绑定后再查看背包~"
-            )
+            error_txt = "💔 <b>请先绑定账号喵！</b>\n\n使用 <code>/bind 账号</code> 绑定后再查看背包~"
+            if query:
+                await query.edit_message_text(error_txt, parse_mode='HTML')
+            else:
+                await reply_with_auto_delete(msg, error_txt)
             return
 
         # 解析背包物品
@@ -143,11 +140,11 @@ async def my_bag(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📋 物品详情", callback_data="bag_detail")]
         ]
 
-        await reply_with_auto_delete(
-            msg,
-            txt,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        # 根据调用方式选择编辑或回复
+        if query:
+            await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        else:
+            await reply_with_auto_delete(msg, txt, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def bag_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

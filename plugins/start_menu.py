@@ -951,6 +951,31 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             await query.message.reply_html(txt, reply_markup=InlineKeyboardMarkup(buttons))
 
+    # === 缺失的按钮处理 ===
+    # 战力突破
+    elif data == "breakthrough":
+        from plugins.breakthrough import breakthrough_menu
+        fake_update = make_fake_update(query, callback_query=query)
+        await breakthrough_menu(fake_update, context)
+
+    # 公会系统
+    elif data == "guild":
+        from plugins.guild import guild_menu
+        fake_update = make_fake_update(query, callback_query=query)
+        await guild_menu(fake_update, context)
+
+    # 外观商店
+    elif data == "cosmetics":
+        from plugins.cosmetics import cosmetics_menu
+        fake_update = make_fake_update(query, callback_query=query)
+        await cosmetics_menu(fake_update, context)
+
+    # 新手教程
+    elif data == "tutorial_start":
+        from plugins.tutorial import tutorial_start
+        fake_update = make_fake_update(query, callback_query=query)
+        await tutorial_start(fake_update, context)
+
 
 def register(app):
     app.add_handler(CommandHandler("start", start_menu))
@@ -964,14 +989,16 @@ def register(app):
 
     # 主菜单按钮 - 使用 group=0 确保优先处理
     for data in ["me", "checkin", "bank", "shop", "bag", "hall", "presence", "forge", "video_mining",
-                 "lucky_wheel", "daily_tasks", "menu_more", "back_menu", "back_main"]:
+                 "lucky_wheel", "daily_tasks", "menu_more", "back_menu", "back_main",
+                 "breakthrough", "guild"]:  # 新增: 战力突破、公会系统
         app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
         print(f"  ✅ 注册: {data}", flush=True)
 
     # 子菜单按钮
     for data in ["menu_combat", "menu_fun", "menu_asset", "menu_personal", "menu_help",
                  "menu_social", "menu_gift", "menu_achievement", "progress_preview", "duel_info",
-                 "vip", "upgrade_vip", "apply_vip", "help_manual", "help_faq"]:
+                 "vip", "upgrade_vip", "apply_vip", "help_manual", "help_faq",
+                 "cosmetics", "tutorial_start"]:  # 新增: 外观商店、新手教程
         app.add_handler(CallbackQueryHandler(button_callback, pattern=f"^{data}$"), group=0)
         print(f"  ✅ 注册: {data}", flush=True)
 

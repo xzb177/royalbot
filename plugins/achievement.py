@@ -892,10 +892,10 @@ def get_achievement_single_progress(user: UserBinding, ach_id: str, achievement:
 # 📜 成就展示命令
 # ==========================================
 async def achievement_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """显示成就列表"""
+    """显示成就列表（支持命令和回调两种方式）"""
     query = getattr(update, "callback_query", None)
     msg = update.effective_message
-    if not msg:
+    if not msg and not query:
         return
 
     user_id = update.effective_user.id
@@ -903,7 +903,11 @@ async def achievement_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not user or not user.emby_account:
-            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来~")
+            error_txt = "💔 <b>请先绑定账号喵！</b>\n使用 <code>/bind 账号</code> 绑定后再来~"
+            if query:
+                await query.edit_message_text(error_txt, parse_mode='HTML')
+            else:
+                await reply_with_auto_delete(msg, error_txt)
             return
 
         # 获取聊天ID（如果在群聊中，用于广播成就）

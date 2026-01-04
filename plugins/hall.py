@@ -13,7 +13,6 @@ from utils import reply_with_auto_delete
 PAGE_SIZE = 10
 
 
-# 战力等级称号
 def get_rank_title(attack):
     """根据战力获取称号"""
     if attack >= 10000:
@@ -73,13 +72,10 @@ def format_rank_list(users, current_user_id, start_rank=1):
 
 
 async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """荣耀殿堂 - 战力排行榜（支持命令和回调两种方式）"""
     query = getattr(update, "callback_query", None)
     msg = update.effective_message
-    if not msg:
-        return
-    """荣耀殿堂 - 战力排行榜"""
-    msg = update.effective_message
-    if not msg:
+    if not msg and not query:
         return
 
     user_id = update.effective_user.id
@@ -88,7 +84,11 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_user = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not current_user or not current_user.emby_account:
-            await reply_for_callback(update, "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！")
+            error_txt = "💔 <b>【 魔 法 契 约 丢 失 】</b>\n请先使用 <code>/bind</code> 缔结魔法契约喵！"
+            if query:
+                await query.edit_message_text(error_txt, parse_mode='HTML')
+            else:
+                await reply_with_auto_delete(msg, error_txt)
             return
 
         # 获取所有有战力的用户
@@ -98,13 +98,16 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ).order_by(UserBinding.attack.desc()).all()
 
         if not all_users:
-            await reply_with_auto_delete(
-                msg,
+            empty_txt = (
                 f"🏆 <b>【 荣 耀 殿 堂 】</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"暂无战力记录喵！\n\n"
                 f"<i>\"快去锻造魔法武器提升战力吧！(｡•̀ᴗ-)✧\"</i>"
             )
+            if query:
+                await query.edit_message_text(empty_txt, parse_mode='HTML')
+            else:
+                await reply_with_auto_delete(msg, empty_txt)
             return
 
         # 获取当前用户排名
@@ -171,11 +174,11 @@ async def hall_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         buttons.append([InlineKeyboardButton("⚒️ 去炼金", callback_data="forge")])
 
-    await reply_with_auto_delete(
-        msg,
-        text,
-        reply_markup=InlineKeyboardMarkup(buttons) if buttons else None
-    )
+    # 根据调用方式选择编辑或回复
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None, parse_mode='HTML')
+    else:
+        await reply_with_auto_delete(msg, text, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None)
 
 
 def register(app):

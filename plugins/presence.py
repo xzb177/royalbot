@@ -106,9 +106,10 @@ async def track_presence(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def presence_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """查看活跃度"""
+    """查看活跃度（支持命令和回调两种方式）"""
+    query = getattr(update, "callback_query", None)
     msg = update.effective_message
-    if not msg:
+    if not msg and not query:
         return
 
     user_id = update.effective_user.id
@@ -117,7 +118,11 @@ async def presence_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = session.query(UserBinding).filter_by(tg_id=user_id).first()
 
         if not u or not u.emby_account:
-            await reply_with_auto_delete(msg, "💔 <b>请先绑定账号喵！</b>")
+            error_txt = "💔 <b>请先绑定账号喵！</b>"
+            if query:
+                await query.edit_message_text(error_txt, parse_mode='HTML')
+            else:
+                await reply_with_auto_delete(msg, error_txt)
             return
 
         # 计算当前等级和下一级
@@ -180,7 +185,11 @@ async def presence_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         session.commit()
 
-    await reply_with_auto_delete(msg, txt)
+    # 根据调用方式选择编辑或回复
+    if query:
+        await query.edit_message_text(txt, parse_mode='HTML')
+    else:
+        await reply_with_auto_delete(msg, txt)
 
 
 async def presence_rank_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
