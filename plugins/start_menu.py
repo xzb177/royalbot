@@ -124,19 +124,15 @@ def get_menu_layout(is_vip: bool = False) -> list:
         [InlineKeyboardButton(first_button_text, callback_data=first_button_data),
          InlineKeyboardButton("🍬 每日签到", callback_data="checkin")],
 
-        # === 🎬 影音专区（Emby观影挖矿）===
-        [InlineKeyboardButton("🎬 影音挖矿", callback_data="video_mining")],
-
         # === 每日必做 ===
         [InlineKeyboardButton("📋 每日任务", callback_data="daily_tasks"),
          InlineKeyboardButton("🎡 幸运转盘", callback_data="lucky_wheel")],
 
-        # === ⚡ 新功能 ===
-        [InlineKeyboardButton("💪 战力突破", callback_data="breakthrough"),
-         InlineKeyboardButton("🏰 公会系统", callback_data="guild")],
-
-        # === 更多功能 ===
-        [InlineKeyboardButton("🎮 更多功能", callback_data="menu_more")],
+        # === 影音 & 新功能 ===
+        [InlineKeyboardButton("🎬 影音挖矿", callback_data="video_mining"),
+         InlineKeyboardButton("💪 战力突破", callback_data="breakthrough")],
+        [InlineKeyboardButton("🏰 公会系统", callback_data="guild"),
+         InlineKeyboardButton("🎮 更多功能", callback_data="menu_more")],
     ]
     return buttons
 
@@ -194,8 +190,8 @@ def get_asset_menu_layout() -> list:
     buttons = [
         [InlineKeyboardButton("🔙 返回", callback_data="menu_more")],
         [InlineKeyboardButton("🏦 皇家银行", callback_data="bank"),
-         InlineKeyboardButton("🛒 魔法商店", callback_data="shop")],
-        [InlineKeyboardButton("💝 转赠魔力", callback_data="menu_gift")],
+         InlineKeyboardButton("🛒 魔法商店", callback_data="shop"),
+         InlineKeyboardButton("💝 转赠魔力", callback_data="menu_gift")],
     ]
     return buttons
 
